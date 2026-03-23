@@ -366,6 +366,54 @@
       .mobile-nav{display:flex;}
       .content{padding-bottom:72px;}
     }
+    /* 더보기 우측 드로어 */
+    .more-drawer-bg{
+      position:fixed;inset:0;background:rgba(0,0,0,.45);
+      z-index:400;opacity:0;pointer-events:none;
+      transition:opacity .25s;
+    }
+    .more-drawer-bg.open{opacity:1;pointer-events:auto;}
+    .more-drawer{
+      position:fixed;top:0;right:0;bottom:0;width:280px;max-width:85vw;
+      background:var(--card);z-index:401;
+      transform:translateX(100%);
+      transition:transform .3s cubic-bezier(.4,0,.2,1);
+      display:flex;flex-direction:column;
+      padding-bottom:max(8px,env(safe-area-inset-bottom));
+      overflow-y:auto;
+    }
+    .more-drawer.open{transform:translateX(0);}
+    .more-drawer-header{
+      display:flex;align-items:center;justify-content:space-between;
+      padding:20px 18px 14px;
+      border-bottom:1px solid var(--border);
+    }
+    .more-drawer-title{font-size:16px;font-weight:700;color:var(--text);}
+    .more-drawer-close{
+      width:30px;height:30px;border-radius:50%;border:none;
+      background:var(--hover);color:var(--muted);cursor:pointer;
+      display:flex;align-items:center;justify-content:center;font-size:18px;
+    }
+    .more-drawer-section-label{
+      font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.6px;
+      text-transform:uppercase;padding:14px 18px 6px;
+    }
+    .more-drawer-item{
+      display:flex;align-items:center;gap:12px;
+      padding:12px 18px;cursor:pointer;
+      font-size:14px;color:var(--text);
+      transition:background .12s;
+    }
+    .more-drawer-item:hover{background:var(--hover);}
+    .more-drawer-item.active{color:#3b6ef8;font-weight:600;}
+    .more-drawer-item svg{width:18px;height:18px;stroke:currentColor;flex-shrink:0;}
+    .more-drawer-item .nav-badge{
+      margin-left:auto;font-size:10px;padding:2px 7px;border-radius:20px;
+      background:#3b6ef8;color:#fff;font-weight:700;
+    }
+    .more-drawer-item .nav-badge.new-badge{
+      background:linear-gradient(135deg,#1877f2,#0866ff);
+    }
   </style>
 </head>
 <body>
@@ -434,11 +482,62 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
     팔로워
   </div>
-  <div class="mobile-nav-item" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('show')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+  <div class="mobile-nav-item" id="moreNavBtn" onclick="openMoreDrawer()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
     더보기
   </div>
 </nav>
+
+<!-- 더보기 우측 드로어 -->
+<div class="more-drawer-bg" id="moreDrawerBg" onclick="closeMoreDrawer()"></div>
+<div class="more-drawer" id="moreDrawer">
+  <div class="more-drawer-header">
+    <span class="more-drawer-title">메뉴</span>
+    <button class="more-drawer-close" onclick="closeMoreDrawer()">✕</button>
+  </div>
+
+  <div class="more-drawer-section-label">콘텐츠</div>
+  <div class="more-drawer-item" data-mdpage="reels" onclick="drawerNav('reels')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="2" y1="17" x2="7" y2="17"/></svg>
+    릴스
+  </div>
+  <div class="more-drawer-item" data-mdpage="stories" onclick="drawerNav('stories')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="9" stroke-dasharray="3 2"/></svg>
+    스토리
+  </div>
+
+  <div class="more-drawer-section-label">분석</div>
+  <div class="more-drawer-item" data-mdpage="comments" onclick="drawerNav('comments')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    댓글 분석
+  </div>
+  <div class="more-drawer-item" data-mdpage="hashtags" onclick="drawerNav('hashtags')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
+    해시태그
+  </div>
+  <div class="more-drawer-item" data-mdpage="competitors" onclick="drawerNav('competitors')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="22" y1="12" x2="19" y2="12"/><line x1="5" y1="12" x2="2" y2="12"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+    경쟁사 분석
+  </div>
+  <div class="more-drawer-item" onclick="closeMoreDrawer();setTimeout(()=>window.location.href='/ads',200)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+    AdPulse <span class="nav-badge new-badge">NEW</span>
+  </div>
+
+  <div class="more-drawer-section-label">관리</div>
+  <div class="more-drawer-item" data-mdpage="connect" onclick="drawerNav('connect')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+    계정 연결
+  </div>
+  <div class="more-drawer-item" data-mdpage="settings" onclick="drawerNav('settings')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    설정
+  </div>
+  <div class="more-drawer-item" data-mdpage="help" onclick="drawerNav('help')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    도움말
+  </div>
+</div>
 
 <!-- ── Main ── -->
 <div class="main">
@@ -3632,6 +3731,7 @@ function navigate(page) {
   curPage = page;
   document.querySelectorAll('.nav-item[data-page]').forEach(el => el.classList.toggle('active', el.dataset.page===page));
   document.querySelectorAll('.mobile-nav-item[data-page]').forEach(el => el.classList.toggle('active', el.dataset.page===page));
+  document.querySelectorAll('.more-drawer-item[data-mdpage]').forEach(el => el.classList.toggle('active', el.dataset.mdpage===page));
   document.getElementById('mainContent').innerHTML = pages[page] ? pages[page]() : '';
   ri();
   initPage(page);
@@ -4271,6 +4371,25 @@ document.getElementById('searchInput').addEventListener('input', e=>{
 });
 
 document.querySelectorAll('.nav-item[data-page]').forEach(el=>{ el.onclick=()=>navigate(el.dataset.page); });
+
+function openMoreDrawer(){
+  document.getElementById('moreDrawerBg').classList.add('open');
+  document.getElementById('moreDrawer').classList.add('open');
+  document.body.style.overflow='hidden';
+  // 현재 페이지 active 표시
+  document.querySelectorAll('.more-drawer-item[data-mdpage]').forEach(el=>{
+    el.classList.toggle('active', el.dataset.mdpage===curPage);
+  });
+}
+function closeMoreDrawer(){
+  document.getElementById('moreDrawerBg').classList.remove('open');
+  document.getElementById('moreDrawer').classList.remove('open');
+  document.body.style.overflow='';
+}
+function drawerNav(page){
+  closeMoreDrawer();
+  setTimeout(()=>navigate(page),200);
+}
 
 // ── INIT ────────────────────────────────────
 igHandleCallback();
