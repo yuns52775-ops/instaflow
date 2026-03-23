@@ -322,6 +322,49 @@
       .widget-grid{grid-template-columns:repeat(2,1fr);}
       .stat-grid{grid-template-columns:repeat(2,1fr);}
       .topbar-right .icon-btn:not(#themeBtn):not(#notifBtn){display:none;}
+      /* 인라인 그리드 오버라이드 */
+      [style*="grid-template-columns:1fr 1fr"],[style*="grid-template-columns: 1fr 1fr"]{grid-template-columns:1fr!important;}
+      [style*="grid-template-columns:repeat(3"],[style*="grid-template-columns: repeat(3"]{grid-template-columns:1fr!important;}
+      [style*="grid-template-columns:repeat(2"],[style*="grid-template-columns: repeat(2"]{grid-template-columns:1fr!important;}
+      /* 테이블 스크롤 */
+      .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+      /* 모달 */
+      .modal-box{width:calc(100vw - 24px)!important;padding:20px 18px;max-height:88vh;}
+      /* 카드 패딩 축소 */
+      .card{padding:14px;}
+      /* 검색박스 숨김 */
+      .search-box{display:none;}
+    }
+    /* 480px: 소형 폰 */
+    @media (max-width:480px){
+      .kpi-grid{grid-template-columns:repeat(2,1fr);}
+      .content{padding:12px 10px 80px;}
+      .topbar{padding:10px 12px;}
+      .page-header h1{font-size:16px;}
+      /* 버튼 텍스트 숨김 (아이콘만) */
+      .page-header-right .btn-ghost span,.page-header-right .btn-primary span{display:none;}
+      /* 하단 네비게이션 바 */
+      .mobile-nav{display:flex;}
+    }
+    /* 모바일 하단 네비게이션 */
+    .mobile-nav{
+      display:none;
+      position:fixed;bottom:0;left:0;right:0;
+      background:var(--card);border-top:1px solid var(--border);
+      z-index:200;padding:8px 0 max(8px,env(safe-area-inset-bottom));
+      justify-content:space-around;align-items:center;
+    }
+    .mobile-nav-item{
+      display:flex;flex-direction:column;align-items:center;gap:3px;
+      padding:4px 12px;border-radius:10px;cursor:pointer;
+      font-size:10px;color:var(--muted);transition:color .15s;
+      min-width:52px;
+    }
+    .mobile-nav-item.active{color:#3b6ef8;}
+    .mobile-nav-item svg{width:20px;height:20px;stroke:currentColor;}
+    @media (max-width:900px){
+      .mobile-nav{display:flex;}
+      .content{padding-bottom:72px;}
     }
   </style>
 </head>
@@ -372,6 +415,30 @@
 
 <!-- ── Sidebar overlay (mobile) ── -->
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+<!-- ── 모바일 하단 네비게이션 ── -->
+<nav class="mobile-nav" id="mobileNav">
+  <div class="mobile-nav-item active" data-page="dashboard" onclick="navigate('dashboard')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+    대시보드
+  </div>
+  <div class="mobile-nav-item" data-page="posts" onclick="navigate('posts')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+    게시물
+  </div>
+  <div class="mobile-nav-item" data-page="growth" onclick="navigate('growth')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+    성장
+  </div>
+  <div class="mobile-nav-item" data-page="followers" onclick="navigate('followers')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+    팔로워
+  </div>
+  <div class="mobile-nav-item" onclick="document.getElementById('sidebar').classList.toggle('open');document.getElementById('sidebarOverlay').classList.toggle('show')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    더보기
+  </div>
+</nav>
 
 <!-- ── Main ── -->
 <div class="main">
@@ -3402,9 +3469,14 @@ let curPage = 'dashboard';
 function navigate(page) {
   curPage = page;
   document.querySelectorAll('.nav-item[data-page]').forEach(el => el.classList.toggle('active', el.dataset.page===page));
+  document.querySelectorAll('.mobile-nav-item[data-page]').forEach(el => el.classList.toggle('active', el.dataset.page===page));
   document.getElementById('mainContent').innerHTML = pages[page] ? pages[page]() : '';
   ri();
   initPage(page);
+  // 모바일: 사이드바 닫기 + 상단으로 스크롤
+  document.getElementById('sidebar')?.classList.remove('open');
+  document.getElementById('sidebarOverlay')?.classList.remove('show');
+  window.scrollTo({top:0, behavior:'smooth'});
 }
 
 function initPage(page) {
