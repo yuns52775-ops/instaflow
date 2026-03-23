@@ -18,5 +18,7 @@ export default function handler(req, res) {
     `&scope=${encodeURIComponent(scope)}` +
     `&response_type=code`;
 
-  res.redirect(url);
+  // JS 리다이렉트: 서버 리다이렉트 대신 JS로 이동해 iOS 유니버설 링크 인터셉션 방지
+  res.setHeader('Content-Type', 'text/html');
+  res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>로그인 중...</title></head><body><script>window.location.replace(${JSON.stringify(url)});</script></body></html>`);
 }
