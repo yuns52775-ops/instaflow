@@ -2749,34 +2749,84 @@ function pgCompetitors() {
   const engRank    = [me,...compList].filter(c=>!c.me).filter(c=>c.eng>myEng).length + 1;
   const growthDiff = (myGrowth - avgGrowth).toFixed(1);
   const total = allSorted.length;
+  const isMobile = window.innerWidth <= 640;
 
   return `
 <div class="page-header"><h1>경쟁사 분석${igLiveData?igLiveBadge():''}</h1>
   <div class="page-header-right">
-    <button class="btn-ghost" onclick="showCompetitorEditor()">${ic('edit-2',13)} 경쟁사 편집</button>
+    <button class="btn-ghost" onclick="showCompetitorEditor()">${ic('edit-2',13)} ${isMobile?'편집':'경쟁사 편집'}</button>
     <button class="btn-primary" onclick="toast('경쟁사 분석 리포트 다운로드 완료!','success')">${ic('download',13)} 내보내기</button>
   </div>
 </div>
 
-<div style="background:#f0f9ff;border-radius:12px;padding:11px 16px;margin-bottom:14px;font-size:12.5px;color:#0369a1;display:flex;align-items:center;gap:8px">
-  ${ic('info',13,'#0369a1')} 내 계정은 실제 데이터${igLiveData?'':' (미연결 시 데모)'}. 경쟁사는 직접 입력한 공개 수치 기준 — <b onclick="showCompetitorEditor()" style="cursor:pointer;text-decoration:underline">편집하기</b>
+<div style="background:#f0f9ff;border-radius:12px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#0369a1;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  ${ic('info',13,'#0369a1')} 내 계정은 실제 데이터. 경쟁사는 직접 입력 기준 —
+  <b onclick="showCompetitorEditor()" style="cursor:pointer;text-decoration:underline;white-space:nowrap">편집하기</b>
 </div>
 
-<div class="stat-grid" style="margin-bottom:14px">
+<div class="stat-grid" style="grid-template-columns:repeat(2,1fr);margin-bottom:14px">
   ${[
     [`${myRank}위 / ${total}개`, '팔로워 순위', '#6366f1','award'],
     [`${growthRank}위`, `성장률 순위${growthRank===1?' 🏆':''}`, '#10b981','trending-up'],
     [`${engRank}위`, `인게이지먼트 순위${engRank===1?' 🏆':''}`, '#3b6ef8','heart'],
-    [`${growthDiff>=0?'+':''}${growthDiff}%p`, '경쟁사 평균 대비 성장률', '#f59e0b','zap'],
+    [`${growthDiff>=0?'+':''}${growthDiff}%p`, '평균 대비 성장률', '#f59e0b','zap'],
   ].map(([v,l,c,i])=>`
-  <div class="stat-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div class="stat-big" style="color:${c}">${v}</div><div style="width:32px;height:32px;border-radius:9px;background:${c}18;display:flex;align-items:center;justify-content:center">${ic(i,15,c)}</div></div><div class="stat-lbl">${l}</div></div>`).join('')}
+  <div class="stat-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div class="stat-big" style="color:${c};font-size:clamp(14px,2vw,24px)">${v}</div><div style="width:30px;height:30px;border-radius:9px;background:${c}18;display:flex;align-items:center;justify-content:center">${ic(i,14,c)}</div></div><div class="stat-lbl">${l}</div></div>`).join('')}
 </div>
 
 <div class="card" style="margin-bottom:14px">
   <div class="card-hd">
-    <span class="card-title">경쟁사 비교 테이블</span>
+    <span class="card-title">경쟁사 비교</span>
     <span style="font-size:12px;color:var(--muted)">${total}개 계정</span>
   </div>
+  ${isMobile ? `
+  <!-- 모바일 카드뷰 -->
+  <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+    ${allSorted.map(c => {
+      const growthColor = c.growth>0?'#10b981':c.growth<0?'#ef4444':'#9ca3af';
+      const engColor = c.eng>=6?'#10b981':c.eng>=4?'#3b6ef8':'#9ca3af';
+      const rankIcon = c.rank===1?'🥇':c.rank===2?'🥈':c.rank===3?'🥉':c.rank+'위';
+      return `
+      <div style="padding:12px;background:${c.me?'var(--input-bg)':'var(--card)'};border-radius:12px;border:${c.me?'1.5px solid #6366f133':'1px solid var(--border)'}">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="font-size:16px;min-width:28px">${rankIcon}</span>
+          <div style="width:36px;height:36px;border-radius:50%;background:${c.bg};color:${c.col};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">${c.avatar}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700;display:flex;align-items:center;gap:5px">
+              ${c.name}
+              ${c.me?`<span style="font-size:9px;color:#6366f1;background:#ede9fe;padding:1px 5px;border-radius:20px">내 계정</span>`:''}
+            </div>
+            <div style="font-size:11.5px;color:var(--muted)">${c.handle}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:13px;font-weight:700">${c.followers>=10000?(c.followers/10000).toFixed(1)+'만':c.followers.toLocaleString()}</div>
+            <div style="font-size:10px;color:var(--muted)">팔로워</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <div style="flex:1;height:5px;background:var(--border);border-radius:99px;overflow:hidden">
+            <div style="width:${Math.round(c.followers/maxF*100)}%;height:100%;background:${c.me?'#6366f1':'#3b6ef8'};border-radius:99px"></div>
+          </div>
+          <span style="font-size:10.5px;color:var(--muted)">${Math.round(c.followers/maxF*100)}%</span>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+          <div style="text-align:center;padding:6px;background:var(--card);border-radius:8px;border:1px solid var(--border)">
+            <div style="font-size:12px;font-weight:700;color:${growthColor}">${c.growth>0?'▲':'▼'} ${Math.abs(c.growth)}%</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px">성장률</div>
+          </div>
+          <div style="text-align:center;padding:6px;background:var(--card);border-radius:8px;border:1px solid var(--border)">
+            <div style="font-size:12px;font-weight:700;color:${engColor}">${c.eng}%</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px">인게이지먼트</div>
+          </div>
+          <div style="text-align:center;padding:6px;background:var(--card);border-radius:8px;border:1px solid var(--border)">
+            <div style="font-size:12px;font-weight:700">${c.posts.toLocaleString()}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:1px">게시물</div>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>` : `
+  <!-- 데스크탑 테이블뷰 -->
   <div class="table-wrap"><table class="data-table">
     <thead><tr><th>순위</th><th>계정</th><th>팔로워</th><th style="width:160px">비율</th><th>30일 성장률</th><th>인게이지먼트율</th><th>게시물 수</th></tr></thead>
     <tbody>
@@ -2796,19 +2846,17 @@ function pgCompetitors() {
         <td style="color:var(--muted)">${c.posts.toLocaleString()}</td>
       </tr>`).join('')}
     </tbody>
-  </table></div>
+  </table></div>`}
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
   <div class="card">
-    <div class="card-hd"><span class="card-title">지표 레이더 비교${igLiveData?igLiveBadge():''}</span>
-      <span style="font-size:12px;color:var(--muted)">내 계정 vs 경쟁사 평균</span>
-    </div>
-    <canvas id="compRadarChart" height="220"></canvas>
+    <div class="card-hd"><span class="card-title">${isMobile?'레이더 비교':'지표 레이더 비교'}${igLiveData?igLiveBadge():''}</span></div>
+    <canvas id="compRadarChart" height="${isMobile?180:220}"></canvas>
   </div>
   <div class="card">
-    <div class="card-hd"><span class="card-title">팔로워 성장률 비교${igLiveData?igLiveBadge():''}</span></div>
-    <canvas id="compFollowerChart" height="220"></canvas>
+    <div class="card-hd"><span class="card-title">${isMobile?'성장률 비교':'팔로워 성장률 비교'}${igLiveData?igLiveBadge():''}</span></div>
+    <canvas id="compFollowerChart" height="${isMobile?180:220}"></canvas>
   </div>
 </div>`;
 }
