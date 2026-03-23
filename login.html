@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InstaFlow — Instagram 성과 분석</title>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #f5576c 75%, #fda085 100%);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 24px;
+      padding: 48px 44px;
+      width: 100%; max-width: 440px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.18);
+    }
+    .logo-wrap {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 8px;
+    }
+    .logo-icon {
+      width: 48px; height: 48px; border-radius: 14px;
+      background: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo-name { font-size: 26px; font-weight: 800; color: #111; letter-spacing: -0.5px; }
+    .logo-sub { font-size: 12px; color: #9ca3af; margin-left: 2px; font-weight: 500; }
+    .tagline {
+      font-size: 14.5px; color: #6b7280;
+      margin-bottom: 28px; line-height: 1.6;
+    }
+    .features {
+      background: #f9fafb; border-radius: 14px;
+      padding: 16px 18px; margin-bottom: 28px;
+    }
+    .feature-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 0; font-size: 13.5px; color: #374151;
+    }
+    .feature-item:not(:last-child) { border-bottom: 1px solid #f0f0f0; }
+    .check { color: #10b981; flex-shrink: 0; }
+    .btn-ig {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; padding: 14px;
+      background: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+      color: #fff; border: none; border-radius: 14px;
+      font-size: 15px; font-weight: 700; cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      text-decoration: none; margin-bottom: 10px;
+    }
+    .btn-ig:hover { opacity: .92; transform: translateY(-1px); }
+    .btn-ig:active { transform: translateY(0); }
+    .btn-demo {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      width: 100%; padding: 12px;
+      background: #f3f4f6; color: #374151;
+      border: none; border-radius: 14px;
+      font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: background .15s;
+      margin-bottom: 16px;
+    }
+    .btn-demo:hover { background: #e5e7eb; }
+    .divider {
+      display: flex; align-items: center; gap: 12px;
+      margin-bottom: 16px; color: #d1d5db; font-size: 12px;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: #e5e7eb;
+    }
+    .btn-token {
+      display: flex; align-items: center; justify-content: center; gap: 7px;
+      width: 100%; padding: 11px;
+      background: none; color: #6b7280;
+      border: 1.5px solid #e5e7eb; border-radius: 14px;
+      font-size: 13px; font-weight: 500; cursor: pointer;
+      transition: border-color .15s, color .15s;
+      margin-bottom: 20px;
+    }
+    .btn-token:hover { border-color: #9ca3af; color: #374151; }
+    .privacy {
+      font-size: 11.5px; color: #9ca3af; text-align: center; line-height: 1.6;
+    }
+    .privacy a { color: #6b7280; text-decoration: none; }
+
+    /* 에러 배너 */
+    .error-banner {
+      background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px;
+      padding: 11px 14px; margin-bottom: 20px;
+      font-size: 13px; color: #b91c1c; display: none;
+      align-items: center; gap: 8px;
+    }
+
+    /* 토큰 입력 모달 */
+    .modal-bg {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      display: none; align-items: center; justify-content: center;
+      z-index: 100; padding: 20px;
+    }
+    .modal-bg.open { display: flex; }
+    .modal {
+      background: #fff; border-radius: 18px; padding: 28px 28px 24px;
+      width: 100%; max-width: 400px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.18);
+    }
+    .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 16px; }
+    .form-label { font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block; }
+    .form-textarea {
+      width: 100%; padding: 10px 12px; border: 1.5px solid #e5e7eb; border-radius: 10px;
+      font-size: 12px; font-family: monospace; resize: vertical; min-height: 80px;
+      outline: none; background: #f9fafb; color: #111;
+    }
+    .form-textarea:focus { border-color: #dc2743; }
+    .modal-hint { font-size: 11.5px; color: #9ca3af; margin: 8px 0 18px; line-height: 1.6; }
+    .modal-btns { display: flex; gap: 8px; }
+    .modal-cancel {
+      flex: 1; padding: 11px; background: #f3f4f6; border: none;
+      border-radius: 10px; font-size: 14px; font-weight: 600;
+      cursor: pointer; color: #374151;
+    }
+    .modal-ok {
+      flex: 1; padding: 11px;
+      background: linear-gradient(135deg, #dc2743, #bc1888);
+      border: none; border-radius: 10px; font-size: 14px; font-weight: 700;
+      cursor: pointer; color: #fff;
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="logo-wrap">
+    <div class="logo-icon">
+      <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"
+           fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+        <circle cx="12" cy="12" r="4"/>
+        <circle cx="17.5" cy="6.5" r="1" fill="#fff" stroke="none"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-name">InstaFlow</div>
+      <div class="logo-sub">Instagram 성과 분석</div>
+    </div>
+  </div>
+
+  <p class="tagline">
+    내 Instagram 계정의 팔로워·게시물·인사이트 데이터를<br>
+    한 곳에서 분석하세요.
+  </p>
+
+  <div id="errorBanner" class="error-banner"></div>
+
+  <div class="features">
+    <div class="feature-item">
+      <svg class="check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      팔로워 성장 & 인구통계 분석
+    </div>
+    <div class="feature-item">
+      <svg class="check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      게시물·스토리별 도달수 & 인게이지먼트
+    </div>
+    <div class="feature-item">
+      <svg class="check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      AI 기반 최적 업로드 시간 추천
+    </div>
+    <div class="feature-item">
+      <svg class="check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+      해시태그 & 경쟁사 분석
+    </div>
+  </div>
+
+  <a class="btn-ig" href="/api/auth/login">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+         fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+      <circle cx="12" cy="12" r="4"/>
+      <circle cx="17.5" cy="6.5" r="1" fill="#fff" stroke="none"/>
+    </svg>
+    Instagram으로 로그인
+  </a>
+
+  <button class="btn-demo" onclick="goDemo()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    데모로 체험하기
+  </button>
+
+  <div class="divider">또는</div>
+
+  <button class="btn-token" onclick="openTokenModal()">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+    액세스 토큰으로 직접 연결
+  </button>
+
+  <p class="privacy">
+    로그인 시 인사이트 조회 권한만 요청하며,<br>
+    게시·수정·삭제 권한은 일절 요청하지 않습니다.
+  </p>
+</div>
+
+<!-- 토큰 직접 입력 모달 -->
+<div class="modal-bg" id="tokenModal" onclick="if(event.target===this)closeTokenModal()">
+  <div class="modal">
+    <div class="modal-title">🔑 액세스 토큰으로 연결</div>
+    <label class="form-label">Instagram Graph API 액세스 토큰</label>
+    <textarea class="form-textarea" id="tokenInput" placeholder="IGAAxxxxxxxx..."></textarea>
+    <p class="modal-hint">
+      Meta 개발자 콘솔 → 도구 → Graph API 탐색기에서<br>
+      발급받은 토큰을 붙여넣으세요.
+    </p>
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="closeTokenModal()">취소</button>
+      <button class="modal-ok" onclick="connectWithToken()">연결하기</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // URL 에러 파라미터 처리
+  (function () {
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get('error');
+    if (err) {
+      const banner = document.getElementById('errorBanner');
+      const msgs = {
+        cancelled: '로그인이 취소되었습니다.',
+        access_denied: '권한 허용이 거부되었습니다.',
+        server_error: '서버 오류가 발생했습니다. 다시 시도해주세요.',
+        token_exchange_failed: '토큰 발급에 실패했습니다. App ID/Secret을 확인하세요.',
+      };
+      banner.innerHTML = `
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        ${msgs[err] || decodeURIComponent(err)}
+      `;
+      banner.style.display = 'flex';
+      // 깨끗한 URL로 교체
+      history.replaceState(null, '', '/');
+    }
+  })();
+
+  // 이미 연결된 계정이 있으면 대시보드로
+  (function () {
+    try {
+      const conn = JSON.parse(localStorage.getItem('ig_connection'));
+      const token = localStorage.getItem('ig_token');
+      if (conn && token) {
+        window.location.href = '/dashboard';
+      }
+    } catch (e) {}
+  })();
+
+  function goDemo() {
+    // 데모 연결 후 대시보드로
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+    localStorage.setItem('ig_connection', JSON.stringify({
+      demo: true, handle: '@k_instaflow', name: '김인스타',
+      type: '비즈니스 계정', since: dateStr,
+      followers: 48291, posts: 142, avatar: '김',
+      connectedAt: now.toISOString()
+    }));
+    window.location.href = '/dashboard';
+  }
+
+  function openTokenModal() {
+    document.getElementById('tokenModal').classList.add('open');
+    setTimeout(() => document.getElementById('tokenInput').focus(), 100);
+  }
+  function closeTokenModal() {
+    document.getElementById('tokenModal').classList.remove('open');
+  }
+
+  async function connectWithToken() {
+    const token = document.getElementById('tokenInput').value.trim();
+    if (!token) { alert('토큰을 입력하세요.'); return; }
+
+    try {
+      const res = await fetch(
+        `https://graph.instagram.com/me?fields=id,username,name,account_type,media_count,followers_count&access_token=${token}`
+      );
+      const data = await res.json();
+      if (data.error) {
+        alert(`연결 실패: ${data.error.message}`);
+        return;
+      }
+      localStorage.setItem('ig_token', token);
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+      localStorage.setItem('ig_connection', JSON.stringify({
+        demo: false, real: true,
+        id: data.id,
+        handle: '@' + data.username,
+        name: data.name || data.username,
+        type: data.account_type === 'BUSINESS' ? '비즈니스 계정' :
+              data.account_type === 'CREATOR' ? '크리에이터 계정' : '개인 계정',
+        since: dateStr,
+        followers: data.followers_count || 0,
+        posts: data.media_count || 0,
+        avatar: (data.name || data.username || '?')[0].toUpperCase(),
+        connectedAt: now.toISOString(),
+      }));
+      window.location.href = '/dashboard';
+    } catch (e) {
+      alert('연결 중 오류가 발생했습니다.');
+    }
+  }
+</script>
+</body>
+</html>
