@@ -3219,6 +3219,7 @@ function pgReels() {
   const avgCompletion = Math.round(reels.reduce((s,r)=>s+(r.completion||0), 0) / reels.length);
   const avgLikes = Math.round(reels.reduce((s,r)=>s+(r.likes||0), 0) / reels.length);
   const maxV = Math.max(...reels.map(r=>r.views||0)) || 1;
+  const isMobile = window.innerWidth <= 640;
 
   return `
 <div class="page-header"><h1>릴스 분석${liveReels ? igLiveBadge() : ''}</h1>
@@ -3227,24 +3228,24 @@ function pgReels() {
   </div>
 </div>
 
-<div class="stat-grid">
+<div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
   ${[
-    [totalViews.toLocaleString(), liveReels ? `총 조회수 (${reels.length}개)` : '총 조회수 (30일)', '#6366f1','play'],
+    [totalViews>=1000?(totalViews/1000).toFixed(0)+'K':totalViews.toLocaleString(), liveReels?`총 조회수 (${reels.length}개)`:'총 조회수 (30일)', '#6366f1','play'],
     [avgCompletion+'%','평균 완료율','#10b981','check-circle'],
-    [avgLikes.toLocaleString(),'평균 좋아요','#ef4444','heart'],
-    [reels.length+'개', liveReels ? '실제 릴스' : '30일 총 릴스','#3b6ef8','film'],
+    [avgLikes>=1000?(avgLikes/1000).toFixed(1)+'K':avgLikes.toLocaleString(),'평균 좋아요','#ef4444','heart'],
+    [reels.length+'개', liveReels?'실제 릴스':'30일 총 릴스','#3b6ef8','film'],
   ].map(([v,l,c,i])=>`
-  <div class="stat-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div class="stat-big" style="color:${c}">${v}</div><div style="width:32px;height:32px;border-radius:9px;background:${c}18;display:flex;align-items:center;justify-content:center">${ic(i,15,c)}</div></div><div class="stat-lbl">${l}</div></div>`).join('')}
+  <div class="stat-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div class="stat-big" style="color:${c};font-size:clamp(16px,2vw,26px)">${v}</div><div style="width:30px;height:30px;border-radius:9px;background:${c}18;display:flex;align-items:center;justify-content:center">${ic(i,14,c)}</div></div><div class="stat-lbl">${l}</div></div>`).join('')}
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
   <div class="card">
     <div class="card-hd"><span class="card-title">주간 조회수 추이</span></div>
-    <canvas id="reelsViewChart" height="180"></canvas>
+    <canvas id="reelsViewChart" height="${isMobile?150:180}"></canvas>
   </div>
   <div class="card">
-    <div class="card-hd"><span class="card-title">완료율 vs 공유수 분포</span></div>
-    <canvas id="reelsEngChart" height="180"></canvas>
+    <div class="card-hd"><span class="card-title">완료율 vs 공유수</span></div>
+    <canvas id="reelsEngChart" height="${isMobile?150:180}"></canvas>
   </div>
 </div>
 
@@ -3252,6 +3253,38 @@ function pgReels() {
   <div class="card-hd"><span class="card-title">릴스 목록</span>
     <span style="font-size:12px;color:var(--muted)">최근 30일 · ${reels.length}개</span>
   </div>
+  ${isMobile ? `
+  <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+    ${reels.map(r => {
+      const compColor = r.completion>=80?'#10b981':r.completion>=65?'#f59e0b':'#ef4444';
+      return `
+      <div style="display:flex;gap:12px;align-items:flex-start;padding:12px;background:var(--input-bg);border-radius:12px;border:1px solid var(--border)">
+        <div style="width:44px;height:44px;border-radius:10px;background:${r.bg};display:flex;align-items:center;justify-content:center;flex-shrink:0">${ic(r.icon,18,r.icol)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-bottom:2px">${r.name}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+            <span style="font-size:11px;color:var(--faint)">${r.id}</span>
+            <span style="font-size:11px;color:var(--muted)">${r.duration||''}</span>
+            <span style="font-size:11px;font-weight:600;color:${compColor}">완료율 ${r.completion}%</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:6px">
+            ${[
+              [ic('play',11,'#6366f1'), r.views>=1000?(r.views/1000).toFixed(0)+'K':r.views],
+              [ic('heart',11,'#ef4444'), r.likes>=1000?(r.likes/1000).toFixed(1)+'K':r.likes],
+              [ic('message-square',11,'#3b6ef8'), r.comments],
+              [ic('share-2',11,'#f59e0b'), r.shares>=1000?(r.shares/1000).toFixed(1)+'K':r.shares],
+            ].map(([icon,val])=>`<div style="display:flex;align-items:center;gap:3px;font-size:11.5px;font-weight:600">${icon} ${val}</div>`).join('')}
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;height:4px;background:var(--border);border-radius:99px;overflow:hidden">
+              <div style="width:${Math.round(r.views/maxV*100)}%;height:100%;background:#6366f1;border-radius:99px"></div>
+            </div>
+            <span style="font-size:10.5px;color:var(--muted)">${Math.round(r.views/maxV*100)}%</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>` : `
   <div class="table-wrap"><table class="data-table">
     <thead><tr><th>릴스</th><th>길이</th><th>조회수</th><th style="width:140px">조회 비율</th><th>완료율</th><th>좋아요</th><th>댓글</th><th>공유</th><th>저장</th></tr></thead>
     <tbody>
@@ -3273,7 +3306,7 @@ function pgReels() {
         <td style="color:var(--muted)">${r.saves.toLocaleString()}</td>
       </tr>`).join('')}
     </tbody>
-  </table></div>
+  </table></div>`}
 </div>`;
 }
 
