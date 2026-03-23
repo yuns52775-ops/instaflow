@@ -1592,9 +1592,8 @@ function pgHashtags() {
   const totalUsage = tags.reduce((s,t)=>s+t.posts,0);
   const topTag     = tags[0]?.tag || '–';
   const avgEng     = tags.length ? (tags.reduce((s,t)=>s+t.avgEng,0)/tags.length).toFixed(1) : '0.0';
-
-  // Best performing hashtag (highest avgEng with ≥2 posts)
-  const bestEng = [...tags].filter(t=>t.posts>=2).sort((a,b)=>b.avgEng-a.avgEng)[0];
+  const bestEng    = [...tags].filter(t=>t.posts>=2).sort((a,b)=>b.avgEng-a.avgEng)[0];
+  const isMobile   = window.innerWidth <= 640;
 
   return `
 <div class="page-header"><h1>해시태그 분석${isLive?igLiveBadge():''}</h1>
@@ -1608,24 +1607,24 @@ ${isLive && !liveStats?.length ? `<div style="background:#fff7ed;border-radius:1
   ${ic('info',14,'#f59e0b')} 게시물 캡션에 해시태그가 없습니다. 게시물에 해시태그를 추가하면 분석 데이터가 표시됩니다.
 </div>` : ''}
 
-<div class="stat-grid">
+<div class="stat-grid" style="grid-template-columns:repeat(2,1fr)">
   ${[
-    [totalReach.toLocaleString(), '총 해시태그 도달수', '#6366f1','hash'],
+    [totalReach>=1000?(totalReach/1000).toFixed(0)+'K':totalReach, '총 해시태그 도달수', '#6366f1','hash'],
     [totalUsage+'회', '총 해시태그 사용수', '#3b6ef8','file-text'],
     [avgEng+'%', '평균 인게이지먼트율', '#10b981','trending-up'],
-    [bestEng ? bestEng.tag : topTag, '최고 성과 해시태그', '#f59e0b','award'],
+    [bestEng ? bestEng.tag : topTag, '최고 성과 태그', '#f59e0b','award'],
   ].map(([v,l,c,i])=>`
-  <div class="stat-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div class="stat-big" style="color:${c};font-size:clamp(12px,1.4vw,20px)">${v}</div><div style="width:32px;height:32px;border-radius:9px;background:${c}18;display:flex;align-items:center;justify-content:center">${ic(i,15,c)}</div></div><div class="stat-lbl">${l}</div></div>`).join('')}
+  <div class="stat-card"><div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px"><div class="stat-big" style="color:${c};font-size:clamp(12px,1.4vw,18px);word-break:break-all">${v}</div><div style="width:30px;height:30px;border-radius:9px;background:${c}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">${ic(i,14,c)}</div></div><div class="stat-lbl">${l}</div></div>`).join('')}
 </div>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
   <div class="card">
-    <div class="card-hd"><span class="card-title">해시태그별 도달수 TOP 7${isLive&&liveStats?.length?igLiveBadge():''}</span></div>
-    <canvas id="hashReachChart" height="200"></canvas>
+    <div class="card-hd"><span class="card-title">${isMobile?'도달수 TOP 7':'해시태그별 도달수 TOP 7'}${isLive&&liveStats?.length?igLiveBadge():''}</span></div>
+    <canvas id="hashReachChart" height="${isMobile?160:200}"></canvas>
   </div>
   <div class="card">
-    <div class="card-hd"><span class="card-title">해시태그별 인게이지먼트율 TOP 7${isLive&&liveStats?.length?igLiveBadge():''}</span></div>
-    <canvas id="hashEngChart" height="200"></canvas>
+    <div class="card-hd"><span class="card-title">${isMobile?'인게이지먼트율':'해시태그별 인게이지먼트율 TOP 7'}${isLive&&liveStats?.length?igLiveBadge():''}</span></div>
+    <canvas id="hashEngChart" height="${isMobile?160:200}"></canvas>
   </div>
 </div>
 
@@ -1634,9 +1633,44 @@ ${isLive && !liveStats?.length ? `<div style="background:#fff7ed;border-radius:1
     <span class="card-title">해시태그 상세 지표</span>
     <span style="font-size:12px;color:var(--muted)">${tags.length}개 태그${isLive&&liveStats?.length?' · 실제 데이터':''}</span>
   </div>
+  ${isMobile ? `
+  <!-- 모바일 카드뷰 -->
+  <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+    ${tags.map(t => {
+      const engColor = t.avgEng>=5?'#10b981':t.avgEng>=3?'#3b6ef8':'#f59e0b';
+      return `
+      <div style="padding:12px;background:var(--input-bg);border-radius:12px;border:1px solid var(--border)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:14px;font-weight:700;color:#6366f1">${t.tag}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:11px;color:var(--muted)">${t.posts}개 게시물</span>
+            <span style="font-size:12px;font-weight:700;color:${engColor}">${t.avgEng}%</span>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px">
+          ${[
+            [ic('radio',11,'#6366f1'),'도달수', t.reach>=1000?(t.reach/1000).toFixed(0)+'K':t.reach],
+            [ic('heart',11,'#ef4444'),'좋아요', t.likes>=1000?(t.likes/1000).toFixed(1)+'K':t.likes],
+            [ic('bookmark',11,'#10b981'),'저장', t.saves>=1000?(t.saves/1000).toFixed(1)+'K':t.saves],
+          ].map(([icon,label,val])=>`
+          <div style="text-align:center;padding:6px;background:var(--card);border-radius:8px">
+            <div style="font-size:12.5px;font-weight:700">${val}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:2px">${icon} ${label}</div>
+          </div>`).join('')}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:4px;background:var(--border);border-radius:99px;overflow:hidden">
+            <div style="width:${Math.round(t.reach/mx*100)}%;height:100%;background:#6366f1;border-radius:99px"></div>
+          </div>
+          <span style="font-size:10.5px;color:var(--muted);min-width:28px;text-align:right">${Math.round(t.reach/mx*100)}%</span>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>` : `
+  <!-- 데스크탑 테이블뷰 -->
   <div class="table-wrap"><table class="data-table">
     <thead><tr>
-      <th>해시태그</th><th>사용 게시물</th><th>도달수${isLive&&!igLiveData?.insights?.needsPermission?'':isLive?'<span style="font-size:9px;color:#f59e0b;margin-left:3px">*추정</span>':''}</th>
+      <th>해시태그</th><th>사용 게시물</th><th>도달수</th>
       <th>${ic('heart',11,'#ef4444')} 좋아요</th>
       <th>${ic('message-square',11,'#3b6ef8')} 댓글</th>
       <th>${ic('bookmark',11,'#10b981')} 저장</th>
@@ -1665,7 +1699,7 @@ ${isLive && !liveStats?.length ? `<div style="background:#fff7ed;border-radius:1
         </tr>`;
       }).join('')}
     </tbody>
-  </table></div>
+  </table></div>`}
 </div>`;
 }
 
