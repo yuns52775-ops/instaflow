@@ -284,8 +284,13 @@
     canvas{max-width:100%;}
 
     /* ── Hamburger ── */
-    .hamburger{display:none;width:34px;height:34px;border-radius:9px;border:1px solid var(--border);align-items:center;justify-content:center;cursor:pointer;background:var(--card);color:var(--muted);flex-shrink:0;}
+    .hamburger{display:flex;width:34px;height:34px;border-radius:9px;border:1px solid var(--border);align-items:center;justify-content:center;cursor:pointer;background:var(--card);color:var(--muted);flex-shrink:0;}
     .hamburger:hover{background:var(--input-bg);color:var(--text);}
+    /* 데스크톱 사이드바 닫힘 상태 */
+    body.sidebar-closed .sidebar{transform:translateX(-228px);}
+    body.sidebar-closed .main{margin-left:0;}
+    .sidebar{transition:background .25s,transform .25s;}
+    .main{transition:margin-left .25s;}
     .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99;backdrop-filter:blur(1px);}
     .sidebar-overlay.show{display:block;}
 
@@ -4208,23 +4213,45 @@ function sendAI() {
   setTimeout(()=>{ t.textContent=aiLines[aiIdx%aiLines.length]; aiIdx++; msgs.scrollTop=msgs.scrollHeight; },700);
 }
 
-// ── SIDEBAR TOGGLE (mobile) ──────────────────
+// ── SIDEBAR TOGGLE ──────────────────
 const sidebar=document.querySelector('.sidebar');
 const overlay=document.getElementById('sidebarOverlay');
-document.getElementById('hamburgerBtn').onclick=()=>{
-  sidebar.classList.toggle('open');
-  overlay.classList.toggle('show');
+const hamburgerBtn=document.getElementById('hamburgerBtn');
+
+function toggleSidebar(){
+  if(window.innerWidth<=900){
+    // 모바일: 오버레이 방식
+    sidebar.classList.toggle('open');
+    overlay.classList.toggle('show');
+  } else {
+    // 데스크톱: body 클래스로 슬라이드
+    document.body.classList.toggle('sidebar-closed');
+  }
+  updateHamburgerIcon();
   ri();
-};
+}
+
+function updateHamburgerIcon(){
+  const isClosed = window.innerWidth<=900
+    ? !sidebar.classList.contains('open')
+    : document.body.classList.contains('sidebar-closed');
+  hamburgerBtn.innerHTML = isClosed
+    ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>'
+    : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+}
+
+hamburgerBtn.onclick=toggleSidebar;
 overlay.onclick=()=>{
   sidebar.classList.remove('open');
   overlay.classList.remove('show');
+  updateHamburgerIcon();
 };
 // close sidebar on nav click (mobile)
 sidebar.querySelectorAll('.nav-item').forEach(el=>el.addEventListener('click',()=>{
   if(window.innerWidth<=900){
     sidebar.classList.remove('open');
     overlay.classList.remove('show');
+    updateHamburgerIcon();
   }
 }));
 // reset sidebar on resize to desktop
