@@ -367,18 +367,19 @@
       .content{padding-bottom:72px;}
     }
     /* 하단 네비 두 줄 슬라이드 */
-    .mobile-nav{overflow:hidden;position:relative;}
+    .mobile-nav{overflow:hidden;}
     .mobile-nav-row{
       display:flex;justify-content:space-around;align-items:center;
-      width:100%;
+      width:100%;flex-shrink:0;
       transition:transform .28s cubic-bezier(.4,0,.2,1);
     }
-    .mobile-nav-row.slide-out-left{transform:translateX(-100%);}
-    .mobile-nav-row.slide-in-right{transform:translateX(100%);}
+    #mobileNavMain{transform:translateX(0);}
+    #mobileNavMain.slide-out-left{transform:translateX(-100%);}
     #mobileNavMore{
-      position:absolute;top:0;left:0;right:0;
+      position:absolute;top:0;left:0;right:0;bottom:0;
+      display:flex;justify-content:space-around;align-items:center;
       transform:translateX(100%);
-      padding:8px 0;
+      transition:transform .28s cubic-bezier(.4,0,.2,1);
     }
     #mobileNavMore.slide-in{transform:translateX(0);}
   </style>
