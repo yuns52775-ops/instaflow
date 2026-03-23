@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "description": "Instagram 성과 분석 대시보드",
   "engines": {
-    "node": "18.x"
+    "node": "20.x"
   }
 }
