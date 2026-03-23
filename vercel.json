@@ -4,6 +4,7 @@
     { "src": "/api/(.*)", "dest": "/api/$1" },
     { "src": "/dashboard", "dest": "/instagram-dashboard.html" },
     { "src": "/ads", "dest": "/meta-ads.html" },
+    { "src": "/privacy", "dest": "/privacy.html" },
     { "src": "/", "dest": "/login.html" }
   ]
 }
