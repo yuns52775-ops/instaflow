@@ -293,7 +293,9 @@
     body.sidebar-closed .sidebar{transform:translateX(-228px);}
     body.sidebar-closed .main{margin-left:0;}
     .sidebar{transition:background .25s,transform .25s;}
-    .main{transition:margin-left .25s;}
+    @media(max-width:900px){
+      .sidebar{padding-bottom:72px;}
+    }
     .sidebar-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:99;backdrop-filter:blur(1px);}
     .sidebar-overlay.show{display:block;}
 
