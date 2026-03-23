@@ -2867,6 +2867,16 @@ async function igConnectWithToken(token) {
       }, 600);
     } else {
       setTimeout(() => toast(`@${data.username} 계정이 연결되었습니다!`, 'success'), 200);
+      // 비즈니스/크리에이터 계정은 자동으로 실시간 데이터 fetch
+      setTimeout(async () => {
+        toast('실시간 데이터를 불러오는 중...', 'info');
+        const result = await igFetchAllData();
+        if (result) {
+          navigate('dashboard');
+          const fc = result.profile?.followers_count;
+          if (fc) toast(`팔로워 ${fc.toLocaleString()}명 · 실시간 데이터 연동 완료`, 'success');
+        }
+      }, 800);
     }
   } catch(e) {
     toast('연결 중 오류가 발생했습니다. 토큰을 확인하세요.', 'error');
