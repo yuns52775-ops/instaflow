@@ -3687,7 +3687,6 @@ function navigate(page) {
   curPage = page;
   document.querySelectorAll('.nav-item[data-page]').forEach(el => el.classList.toggle('active', el.dataset.page===page));
   document.querySelectorAll('.mobile-nav-item[data-page]').forEach(el => el.classList.toggle('active', el.dataset.page===page));
-  closeMoreNav();
   document.getElementById('mainContent').innerHTML = pages[page] ? pages[page]() : '';
   ri();
   initPage(page);
