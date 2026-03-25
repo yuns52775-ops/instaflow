@@ -1755,7 +1755,7 @@ ${hasAccount
       전체 보기 ${ic('external-link',12)}
     </button>
   </div>
-  ${(realCampaigns||campaigns).slice(0,5).map(c=>`
+  ${campaigns.slice(0,5).map(c=>`
   <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--bg)">
     <span class="pill ${c.status==='active'?'pill-active':c.status==='pause'?'pill-pause':'pill-end'}" style="flex-shrink:0">
       <span class="pill-dot"></span>${c.status==='active'?'집행중':c.status==='pause'?'일시정지':'종료'}
@@ -1767,7 +1767,7 @@ ${hasAccount
       수정 ${ic('external-link',11,'var(--brand)')}
     </button>
   </div>`).join('')}
-  ${!(realCampaigns||campaigns).length ? `<div style="text-align:center;padding:24px;color:var(--faint);font-size:13px">집행 이력이 없습니다</div>` : ''}
+  ${!campaigns.length ? `<div style="text-align:center;padding:24px;color:var(--faint);font-size:13px">집행 이력이 없습니다</div>` : ''}
 </div>`;
 }
 
