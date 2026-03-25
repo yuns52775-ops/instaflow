@@ -380,64 +380,244 @@ const adsets=[
 ];
 const statusMap={active:{cls:'pill-active',label:'활성'},pause:{cls:'pill-pause',label:'일시중지'},end:{cls:'pill-end',label:'종료'},learn:{cls:'pill-learn',label:'학습중'}};
 
+// ══ REAL META ADS API ══════════════════════════════════════════════════════
+const META_GRAPH = 'https://graph.facebook.com/v21.0';
+
+function getMetaToken(){ return localStorage.getItem('meta_ads_token')||''; }
+function getMetaAccountId(){ return localStorage.getItem('meta_ads_account_id')||''; }
+
+let realKpis = null; // populated after successful API call
+
+function metaGetAction(arr, type){
+  if(!arr) return 0;
+  const a = arr.find(x=>x.action_type===type||x.action_type===('offsite_conversion.fb_pixel_'+type)||x.action_type===('omni_'+type));
+  return a ? parseFloat(a.value)||0 : 0;
+}
+
+function metaProcessInsights(data){
+  if(!data||!data.data||!data.data.length) return null;
+  const d = data.data[0];
+  const spend = parseFloat(d.spend)||0;
+  const clicks = parseInt(d.clicks)||0;
+  const conv = metaGetAction(d.actions,'purchase')||metaGetAction(d.actions,'complete_registration')||0;
+  const convVal = metaGetAction(d.action_values,'purchase')||0;
+  return {
+    spend, clicks,
+    impressions: parseInt(d.impressions)||0,
+    reach: parseInt(d.reach)||0,
+    ctr: parseFloat(d.ctr)||0,
+    cpc: parseFloat(d.cpc)||0,
+    cpm: parseFloat(d.cpm)||0,
+    conv, convVal,
+    roas: spend>0 ? convVal/spend : 0,
+    cvr: clicks>0 ? conv/clicks*100 : 0,
+  };
+}
+
+function metaProcessCampaigns(data){
+  if(!data||!data.data) return [];
+  const sm = {ACTIVE:'active',PAUSED:'pause',ARCHIVED:'end',DELETED:'end',CAMPAIGN_PAUSED:'pause',IN_PROCESS:'learn'};
+  return data.data.map(c=>{
+    const ins = c.insights?.data?.[0];
+    const spend = parseFloat(ins?.spend)||0;
+    const conv = ins ? (metaGetAction(ins.actions,'purchase')||metaGetAction(ins.actions,'complete_registration')||0) : 0;
+    const convVal = ins ? (metaGetAction(ins.action_values,'purchase')||0) : 0;
+    return {
+      id:c.id, name:c.name,
+      obj:(c.objective||'—').replace(/_/g,' '),
+      status:sm[c.status]||'end',
+      budget:parseInt(c.daily_budget||c.lifetime_budget||0)/100,
+      spend, reach:parseInt(ins?.reach)||0, imp:parseInt(ins?.impressions)||0,
+      ctr:parseFloat(ins?.ctr)||0, roas:spend>0?convVal/spend:0,
+      conv, cpc:parseFloat(ins?.cpc)||0, cpm:parseFloat(ins?.cpm)||0,
+      cpa:conv>0?spend/conv:0, freq:0,
+      startDate:c.start_time?.slice(0,10)||'—', endDate:c.stop_time?.slice(0,10)||'—',
+    };
+  });
+}
+
+async function metaFetch(path, token){
+  const sep = path.includes('?') ? '&' : '?';
+  const res = await fetch(`${META_GRAPH}${path}${sep}access_token=${token}`);
+  return res.json();
+}
+
+async function loadRealAdsData(){
+  const token = getMetaToken();
+  const accountId = getMetaAccountId();
+  if(!token||!accountId) return false;
+  try {
+    toast('Meta Ads 실시간 데이터 로딩 중...','info');
+    const insFields = 'spend,impressions,reach,clicks,ctr,cpc,cpm,actions,action_values';
+    const campInsFields = `spend,impressions,reach,clicks,ctr,cpc,cpm,actions,action_values`;
+    const campFields = `id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time,insights.date_preset(last_30d){${campInsFields}}`;
+    const [insData, campData] = await Promise.all([
+      metaFetch(`/${accountId}/insights?fields=${insFields}&date_preset=last_30d`, token),
+      metaFetch(`/${accountId}/campaigns?fields=${encodeURIComponent(campFields)}&limit=50`, token),
+    ]);
+    if(insData.error){
+      const code = insData.error.code;
+      if(code===190||code===102){
+        localStorage.removeItem('meta_ads_token');
+        toast('토큰이 만료됐습니다. 재연결해주세요','warn');
+        setTimeout(()=>showMetaConnect(),400);
+        return false;
+      }
+      throw new Error(insData.error.message);
+    }
+    realKpis = metaProcessInsights(insData);
+    const realCamps = metaProcessCampaigns(campData);
+    if(realCamps.length>0){ campaigns.length=0; campaigns.push(...realCamps); }
+    const accName = localStorage.getItem('meta_ads_account_name')||accountId;
+    document.querySelector('.acc-name').textContent = accName;
+    document.querySelector('.acc-id').textContent = '광고 계정 ' + accountId.replace('act_','#');
+    const connectBtn = document.getElementById('metaConnectBtn');
+    if(connectBtn) connectBtn.textContent = '재연결';
+    toast(`실시간 데이터 로드 완료 · 캠페인 ${realCamps.length}개`,'success');
+    return true;
+  } catch(e){
+    toast('데이터 로드 실패: '+e.message,'warn');
+    return false;
+  }
+}
+
+async function showMetaConnect(){
+  const savedToken = getMetaToken();
+  const savedAccId = getMetaAccountId();
+  const html = `
+    <div class="modal-title">${ic('zap',16,'#1877f2')} Meta Ads 연결</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.7">
+      Facebook Graph API 토큰으로 실제 광고 데이터를 불러옵니다.
+    </div>
+    <div style="background:var(--input-bg);border-radius:10px;padding:14px;margin-bottom:14px;font-size:12.5px;line-height:2">
+      <b>🔑 토큰 발급 (1분)</b><br>
+      1. <a href="https://developers.facebook.com/tools/explorer" target="_blank" style="color:var(--brand);font-weight:600">Graph API Explorer</a> 접속<br>
+      2. 오른쪽 <b>권한 추가</b>에서 <code style="background:#e5e7eb;padding:1px 5px;border-radius:4px">ads_read</code> 추가<br>
+      3. <b>Generate Access Token</b> 클릭 → 로그인 승인<br>
+      4. 상단 토큰 복사 후 아래 입력
+    </div>
+    <div class="form-group"><label>액세스 토큰</label>
+      <input id="mcToken" class="form-input" placeholder="EAAxxxxxxxx..." value="${savedToken}" style="font-family:monospace;font-size:12px"/>
+    </div>
+    <div id="mcAccSection" style="${savedToken?'':'display:none'}">
+      <div class="form-group"><label>광고 계정</label>
+        <select id="mcAccSelect" class="form-input" style="cursor:pointer"><option value="">계정 불러오는 중...</option></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn-primary" style="flex:1" onclick="metaLoadAccounts()">${ic('refresh-cw',13,'#fff')} 계정 불러오기</button>
+      <button class="btn-ghost" style="flex:1" onclick="closeModal()">취소</button>
+    </div>
+    <div id="mcSaveRow" style="margin-top:8px;display:none">
+      <button class="btn-primary" style="width:100%;justify-content:center;background:#10b981" onclick="metaSaveConnect()">${ic('check',13,'#fff')} 연결 완료</button>
+    </div>`;
+  openModal(html);
+  if(savedToken) setTimeout(()=>metaLoadAccounts(savedAccId),200);
+}
+
+window.metaLoadAccounts = async function(preselect=''){
+  const token = (document.getElementById('mcToken')?.value||'').trim();
+  if(!token){ toast('토큰을 입력하세요','warn'); return; }
+  const sel = document.getElementById('mcAccSelect');
+  if(sel) sel.innerHTML = '<option>불러오는 중...</option>';
+  document.getElementById('mcAccSection').style.display='';
+  try {
+    const data = await metaFetch('/me/adaccounts?fields=id,name,currency,account_status,amount_spent', token);
+    if(data.error){ toast('토큰 오류: '+data.error.message,'warn'); return; }
+    const accounts = (data.data||[]).filter(a=>a.account_status===1||a.account_status===2);
+    if(!accounts.length){ toast('활성 광고 계정이 없습니다','warn'); return; }
+    sel.innerHTML = accounts.map(a=>`<option value="${a.id}" data-name="${a.name}">${a.name} (${a.id})</option>`).join('');
+    if(preselect) { const opt=[...sel.options].find(o=>o.value===preselect); if(opt) sel.value=preselect; }
+    document.getElementById('mcSaveRow').style.display='';
+    toast(`광고 계정 ${accounts.length}개 발견`,'success');
+  } catch(e){ toast('네트워크 오류: '+e.message,'warn'); }
+};
+
+window.metaSaveConnect = async function(){
+  const token = (document.getElementById('mcToken')?.value||'').trim();
+  const sel = document.getElementById('mcAccSelect');
+  const accountId = sel?.value||'';
+  const accountName = sel?.options[sel.selectedIndex]?.dataset.name||accountId;
+  if(!token||!accountId){ toast('계정을 선택해주세요','warn'); return; }
+  localStorage.setItem('meta_ads_token', token);
+  localStorage.setItem('meta_ads_account_id', accountId);
+  localStorage.setItem('meta_ads_account_name', accountName);
+  closeModal();
+  await loadRealAdsData();
+  navigate('overview');
+};
+
 // ══ PAGES ════════════════════════════════
 function pgOverview(){
+  const k = realKpis;
+  const fmt = v => v>=10000000 ? '₩'+(v/10000000).toFixed(1)+'천만' : v>=1000000 ? '₩'+(v/1000000).toFixed(1)+'M' : v>=10000 ? '₩'+(v/10000).toFixed(0)+'만' : '₩'+Math.round(v).toLocaleString();
+  const fmtn = v => v>=10000 ? (v/10000).toFixed(1)+'만' : Math.round(v).toLocaleString();
+  const isConnected = !!(getMetaToken()&&getMetaAccountId());
+  const alertHtml = k
+    ? `<div class="inline-alert" style="background:#ecfdf5;border-color:#bbf7d0;color:#166534">${ic('check-circle',14,'#16a34a')} <span>실시간 Meta Ads 데이터 연동 중 · 최근 30일 기준 &nbsp;<button onclick="loadRealAdsData().then(()=>navigate('overview'))" style="background:none;border:none;color:#16a34a;font-weight:700;cursor:pointer;font-size:12px">새로고침</button></span></div>`
+    : `<div class="inline-alert">${ic('info',14,'#1877f2')} <span>${isConnected?'데이터를 불러오는 중입니다...':'샘플 데이터입니다.'} &nbsp;<button onclick="showMetaConnect()" id="metaConnectBtn" style="background:none;border:none;color:var(--brand);font-weight:700;cursor:pointer;font-size:12px">${isConnected?'재연결':'Meta Ads 연결하기 →'}</button></span></div>`;
+  const spend   = k ? fmt(k.spend) : '₩4,080,000';
+  const roas    = k ? k.roas.toFixed(2)+'x' : '3.82x';
+  const clicks  = k ? fmtn(k.clicks) : '48,291';
+  const conv    = k ? fmtn(k.conv) : '1,240';
+  const cpm     = k ? fmt(k.cpm) : '₩6,420';
+  const cpc     = k ? fmt(k.cpc) : '₩890';
+  const ctr     = k ? k.ctr.toFixed(2)+'%' : '2.14%';
+  const cvr     = k ? k.cvr.toFixed(2)+'%' : '2.57%';
+  const imps    = k ? fmtn(k.impressions) : '638,000';
   return `
 <div class="page-header">
   <h1>${ic('layout-dashboard',18,'var(--brand)')} 광고 성과 개요</h1>
   <div class="page-header-right">
-    <div class="date-btn" id="dateBtn">${ic('calendar',13)} 2025. 1. 1 – 2. 1</div>
     <div class="date-btn" id="periodBtn">최근 30일 ${ic('chevron-down',12)}</div>
-    <button class="btn-ghost" onclick="openCreateCamp()">${ic('plus',13)} 캠페인 만들기</button>
+    <button class="btn-ghost" onclick="showMetaConnect()">${ic('link',13)} ${isConnected&&k?'재연결':'계정 연결'}</button>
     <button class="btn-primary" onclick="exportReport()">${ic('download',13)} 리포트</button>
   </div>
 </div>
-
-<div class="inline-alert">${ic('info',14,'#1877f2')} <span>데이터는 AdPulse API 기준으로 24시간 지연될 수 있습니다. 마지막 업데이트: 2025. 2. 1 오전 9:00</span></div>
-
+${alertHtml}
 <!-- KPI 8개 -->
 <div class="kpi-grid">
   <div class="kpi-card blue" onclick="showKpi('spend')">
     <div class="kpi-top"><span class="kpi-label">총 광고 지출</span><div class="kpi-icon-box" style="background:#dbeafe">${ic('credit-card',15,'#2563eb')}</div></div>
-    <div class="kpi-value">₩4,080,000 <span class="tag-up">▲18.2%</span></div>
-    <div class="kpi-meta">이전 ₩3,452,000</div>
+    <div class="kpi-value">${spend}</div>
+    <div class="kpi-meta">${k?'노출 '+imps:'이전 ₩3,452,000'}</div>
   </div>
   <div class="kpi-card green" onclick="showKpi('roas')">
     <div class="kpi-top"><span class="kpi-label">ROAS</span><div class="kpi-icon-box" style="background:#dcfce7">${ic('trending-up',15,'#16a34a')}</div></div>
-    <div class="kpi-value">3.82x <span class="tag-up">▲0.4x</span></div>
-    <div class="kpi-meta">이전 3.42x</div>
+    <div class="kpi-value">${roas}</div>
+    <div class="kpi-meta">${k?'전환가치 '+(k.convVal?fmt(k.convVal):'—'):'이전 3.42x'}</div>
   </div>
   <div class="kpi-card purple" onclick="showKpi('clicks')">
     <div class="kpi-top"><span class="kpi-label">총 클릭수</span><div class="kpi-icon-box" style="background:#ede9fe">${ic('mouse-pointer-click',15,'#7c3aed')}</div></div>
-    <div class="kpi-value">48,291 <span class="tag-up">▲9.1%</span></div>
-    <div class="kpi-meta">이전 44,260</div>
+    <div class="kpi-value">${clicks}</div>
+    <div class="kpi-meta">${k?'도달 '+fmtn(k.reach):'이전 44,260'}</div>
   </div>
   <div class="kpi-card yellow" onclick="showKpi('conv')">
     <div class="kpi-top"><span class="kpi-label">전환수</span><div class="kpi-icon-box" style="background:#fef9c3">${ic('shopping-cart',15,'#ca8a04')}</div></div>
-    <div class="kpi-value">1,240 <span class="tag-up">▲14.3%</span></div>
-    <div class="kpi-meta">이전 1,085</div>
+    <div class="kpi-value">${conv}</div>
+    <div class="kpi-meta">${k?'CPA '+(k.conv>0?fmt(k.spend/k.conv):'—'):'이전 1,085'}</div>
   </div>
 </div>
 <div class="kpi-grid">
   <div class="kpi-card red" onclick="showKpi('cpm')">
     <div class="kpi-top"><span class="kpi-label">CPM</span><div class="kpi-icon-box" style="background:#fee2e2">${ic('eye',15,'#dc2626')}</div></div>
-    <div class="kpi-value">₩6,420 <span class="tag-dn">▼3.2%</span></div>
-    <div class="kpi-meta">이전 ₩6,632</div>
+    <div class="kpi-value">${cpm}</div>
+    <div class="kpi-meta">${k?'1,000회 노출당':'이전 ₩6,632'}</div>
   </div>
   <div class="kpi-card pink" onclick="showKpi('cpc')">
     <div class="kpi-top"><span class="kpi-label">CPC</span><div class="kpi-icon-box" style="background:#fce7f3">${ic('mouse-pointer',15,'#be185d')}</div></div>
-    <div class="kpi-value">₩890 <span class="tag-dn">▼8.4%</span></div>
-    <div class="kpi-meta">이전 ₩972</div>
+    <div class="kpi-value">${cpc}</div>
+    <div class="kpi-meta">${k?'클릭당 비용':'이전 ₩972'}</div>
   </div>
   <div class="kpi-card teal" onclick="showKpi('ctr')">
     <div class="kpi-top"><span class="kpi-label">CTR</span><div class="kpi-icon-box" style="background:#cffafe">${ic('percent',15,'#0891b2')}</div></div>
-    <div class="kpi-value">2.14% <span class="tag-up">▲0.3%p</span></div>
-    <div class="kpi-meta">이전 1.84%</div>
+    <div class="kpi-value">${ctr}</div>
+    <div class="kpi-meta">${k?'클릭률':'이전 1.84%'}</div>
   </div>
   <div class="kpi-card indigo" onclick="showKpi('cvr')">
     <div class="kpi-top"><span class="kpi-label">전환율 (CVR)</span><div class="kpi-icon-box" style="background:#eff3ff">${ic('target',15,'#6366f1')}</div></div>
-    <div class="kpi-value">2.57% <span class="tag-up">▲0.5%p</span></div>
-    <div class="kpi-meta">이전 2.07%</div>
+    <div class="kpi-value">${cvr}</div>
+    <div class="kpi-meta">${k?'클릭→전환':'이전 2.07%'}</div>
   </div>
 </div>
 
@@ -1704,6 +1884,10 @@ document.querySelector('.back-btn').onclick=()=>{window.location.href='/dashboar
 
 // ══ INIT ════════════════════════════════
 navigate('overview');
+// 저장된 연결이 있으면 자동으로 실제 데이터 로드
+if(getMetaToken()&&getMetaAccountId()){
+  loadRealAdsData().then(ok=>{ if(ok) navigate('overview'); });
+}
 
 // CSS toggle style (settings)
 const style=document.createElement('style');
