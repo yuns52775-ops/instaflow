@@ -1661,10 +1661,11 @@ let adLibQuery   = '';
 let adLibCountry = 'KR';
 
 function pgAdLibrary() {
-  const token = localStorage.getItem('ig_token') || '';
+  const hasToken = !!localStorage.getItem('meta_ads_token');
   const savedComps = (() => {
     try { return JSON.parse(localStorage.getItem('ig_competitors')) || []; } catch{ return []; }
   })();
+  const popularKR = ['나이키','삼성','배달의민족','쿠팡','올리브영','무신사','카카오','네이버','현대자동차','LG전자'];
 
   return `
 <div class="page-header">
@@ -1672,37 +1673,23 @@ function pgAdLibrary() {
     ${ic('crosshair',20,'var(--brand)')} 경쟁사 광고 분석
     <span style="font-size:11px;background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:20px;font-weight:600">Meta Ad Library</span>
   </h1>
-  <div class="page-header-right">
-    <button class="btn-ghost" onclick="navigate('adlibrary')">${ic('refresh-cw',13)} 새로고침</button>
-  </div>
 </div>
 
-<div style="background:#eff6ff;border-radius:12px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:#1e40af;display:flex;align-items:flex-start;gap:9px">
-  ${ic('info',14,'#3b82f6')}
-  <div>
-    <b>Meta 광고 라이브러리 API</b> — 모든 광고주의 집행 중/종료 광고를 공개 데이터로 검색합니다.<br>
-    <span style="font-size:12px;color:#3b82f6">인스타그램 연결 토큰 사용 · 한국(KR) 집행 광고 검색 · <code>ads_read</code> 권한 필요</span>
-  </div>
-</div>
-
-${(()=>{
-  const saved = localStorage.getItem('meta_ads_token');
-  if (saved) return `<div style="background:#ecfdf5;border-radius:12px;padding:11px 16px;margin-bottom:16px;font-size:13px;color:#065f46;display:flex;align-items:center;gap:10px">
-    ${ic('check-circle',14,'#10b981')}
-    <span>Meta 광고 라이브러리 토큰 저장됨</span>
-    <button onclick="showAdLibTokenGuide()" style="margin-left:auto;font-size:12px;padding:3px 10px;border:1px solid #10b981;border-radius:7px;background:none;color:#065f46;cursor:pointer">토큰 변경</button>
-  </div>`;
-  return `<div style="background:#fff7ed;border-radius:12px;padding:11px 16px;margin-bottom:16px;font-size:13px;color:#92400e;display:flex;align-items:center;gap:10px">
-    ${ic('alert-circle',14,'#f59e0b')}
-    <span>Facebook 액세스 토큰이 필요합니다 — 인스타그램 토큰과 다릅니다</span>
-    <button onclick="showAdLibTokenGuide()" style="margin-left:auto;font-size:12px;padding:3px 10px;border:1px solid #f59e0b;border-radius:7px;background:none;color:#92400e;cursor:pointer">토큰 설정</button>
-  </div>`;
-})()}
+${hasToken
+  ? `<div class="inline-alert" style="background:#ecfdf5;border-color:#bbf7d0;color:#166534;margin-bottom:16px">
+      ${ic('check-circle',14,'#16a34a')} <span>Meta Ads 연결됨 · 광고 라이브러리 검색 가능 &nbsp;
+      <button onclick="showMetaConnect()" style="background:none;border:none;color:#16a34a;font-weight:700;cursor:pointer;font-size:12px">재연결</button></span>
+    </div>`
+  : `<div class="inline-alert" style="margin-bottom:16px">${ic('alert-circle',14,'#f59e0b')}
+      <span style="color:#92400e">Meta Ads 연결이 필요합니다 &nbsp;
+      <button onclick="showMetaConnect()" style="background:none;border:none;color:#d97706;font-weight:700;cursor:pointer;font-size:12px">연결하기 →</button></span>
+    </div>`
+}
 
 <!-- 검색 -->
 <div class="card" style="margin-bottom:16px">
-  <div class="card-hd"><span class="card-title">광고주 / 브랜드 검색</span></div>
-  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+  <div class="card-hd"><span class="card-title">${ic('search',14,'var(--brand)')} 광고주 / 브랜드 검색</span></div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
     <input id="adLibInput" class="form-input" style="flex:1;min-width:220px;font-size:14px;padding:9px 14px"
       placeholder="브랜드명 또는 광고주 검색 (예: 나이키, 삼성, 배달의민족)"
       value="${adLibQuery}"
@@ -1714,14 +1701,26 @@ ${(()=>{
       <option value="JP" ${adLibCountry==='JP'?'selected':''}>🇯🇵 일본</option>
       <option value="ALL" ${adLibCountry==='ALL'?'selected':''}>🌐 전체</option>
     </select>
+    <select id="adLibStatus" class="form-input" style="width:110px;font-size:13px;padding:9px 10px">
+      <option value="ALL">전체 상태</option>
+      <option value="ACTIVE">집행 중만</option>
+      <option value="INACTIVE">종료만</option>
+    </select>
     <button class="btn-primary" onclick="adLibSearch()" style="padding:9px 20px;white-space:nowrap">
       ${ic('search',14)} 검색
     </button>
   </div>
-  ${savedComps.length ? `<div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-    <span style="font-size:12px;color:var(--muted);font-weight:600">저장된 경쟁사:</span>
-    ${savedComps.map(c=>`<button onclick="adLibQuickSearch('${(c.name||c.handle).replace(/'/g,'')}')" style="font-size:12px;padding:4px 12px;border-radius:20px;border:1.5px solid var(--border);background:var(--card);cursor:pointer;color:var(--text);transition:all .15s" onmouseenter="this.style.background='var(--input-bg)'" onmouseleave="this.style.background='var(--card)'">${c.name||c.handle}</button>`).join('')}
+  ${savedComps.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px">
+    <span style="font-size:11.5px;color:var(--muted);font-weight:600">저장된 경쟁사:</span>
+    ${savedComps.slice(0,6).map(c=>`<button onclick="adLibQuickSearch('${(c.name||c.handle||'').replace(/'/g,'')}')"
+      style="font-size:12px;padding:4px 11px;border-radius:20px;border:1.5px solid var(--brand);background:var(--brand-light);cursor:pointer;color:var(--brand);font-weight:600">${c.name||c.handle}</button>`).join('')}
   </div>` : ''}
+  <div style="display:flex;flex-wrap:wrap;gap:5px;align-items:center">
+    <span style="font-size:11.5px;color:var(--faint);font-weight:600">인기 검색:</span>
+    ${popularKR.map(n=>`<button onclick="adLibQuickSearch('${n}')"
+      style="font-size:11.5px;padding:3px 9px;border-radius:20px;border:1px solid var(--border);background:var(--card);cursor:pointer;color:var(--muted);transition:all .15s"
+      onmouseenter="this.style.background='var(--input-bg)'" onmouseleave="this.style.background='var(--card)'">${n}</button>`).join('')}
+  </div>
 </div>
 
 <!-- 결과 -->
@@ -1730,7 +1729,8 @@ ${(()=>{
   <div style="text-align:center;padding:60px 20px;color:var(--muted)">
     <div style="width:56px;height:56px;border-radius:16px;background:var(--input-bg);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">${ic('search',24,'var(--muted)')}</div>
     <div style="font-size:15px;font-weight:600;margin-bottom:6px">경쟁사 광고를 검색하세요</div>
-    <div style="font-size:13px">브랜드명을 입력하면 Meta 플랫폼에서 집행 중인 광고를 볼 수 있습니다</div>
+    <div style="font-size:13px;margin-bottom:16px">브랜드명을 입력하면 Meta 플랫폼에서 집행 중인 광고를 볼 수 있습니다</div>
+    ${!hasToken?`<button onclick="showMetaConnect()" class="btn-primary">${ic('link',13)} Meta Ads 연결 후 검색</button>`:''}
   </div>`}
 </div>`;
 }
