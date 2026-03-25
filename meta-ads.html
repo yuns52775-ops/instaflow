@@ -1659,6 +1659,7 @@ function mkAttrModelChart(){
 
 // ── Advertise ─────────────────────────────────────────────────────────────────
 function pgAdvertise(){
+  const fmt = v => v>=10000000?'₩'+(v/10000000).toFixed(1)+'천만':v>=1000000?'₩'+(v/1000000).toFixed(1)+'M':v>=10000?'₩'+(v/10000).toFixed(0)+'만':'₩'+Math.round(v).toLocaleString();
   const accountId = getMetaAccountId().replace('act_','');
   const accountName = localStorage.getItem('meta_ads_account_name')||'';
   const hasAccount = !!accountId;
