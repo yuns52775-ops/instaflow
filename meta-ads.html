@@ -443,6 +443,37 @@ async function metaFetch(path, token){
 }
 
 let realAdsets = null;
+let realCreatives = null;
+
+function metaProcessAds(data){
+  if(!data||!data.data) return [];
+  const sm = {ACTIVE:'active',PAUSED:'pause',ARCHIVED:'end',DELETED:'end',CAMPAIGN_PAUSED:'pause'};
+  const bgList=['linear-gradient(135deg,#667eea,#764ba2)','linear-gradient(135deg,#f093fb,#f5576c)','linear-gradient(135deg,#4facfe,#00f2fe)','linear-gradient(135deg,#f7971e,#ffd200)','linear-gradient(135deg,#11998e,#38ef7d)','linear-gradient(135deg,#ee0979,#ff6a00)','linear-gradient(135deg,#0082c8,#667eea)'];
+  return data.data.map((a,i)=>{
+    const ins = a.insights?.data?.[0];
+    const spend = parseFloat(ins?.spend)||0;
+    const conv = ins ? (metaGetAction(ins.actions,'purchase')||metaGetAction(ins.actions,'complete_registration')||0) : 0;
+    const convVal = ins ? (metaGetAction(ins.action_values,'purchase')||0) : 0;
+    const objType = a.creative?.object_type||'';
+    const typeMap = {VIDEO:'동영상',SHARE:'카루셀',PHOTO:'이미지',LINK:'링크',STATUS:'텍스트'};
+    const type = typeMap[objType]||'이미지';
+    const iconMap = {동영상:'video',카루셀:'layers',이미지:'image',링크:'link',텍스트:'type'};
+    return {
+      id:a.id, name:a.name,
+      type, icon:iconMap[type]||'image',
+      camp:a.campaign_id||'—',
+      thumbnail:a.creative?.thumbnail_url||null,
+      bg:bgList[i%bgList.length],
+      status:sm[a.status]||'end',
+      spend, imp:parseInt(ins?.impressions)||0,
+      reach:parseInt(ins?.reach)||0,
+      ctr:parseFloat(ins?.ctr)||0,
+      cpc:parseFloat(ins?.cpc)||0,
+      conv, convVal,
+      roas:spend>0?convVal/spend:0,
+    };
+  });
+}
 
 function metaProcessAdsets(data){
   if(!data||!data.data) return [];
@@ -486,10 +517,12 @@ async function loadRealAdsData(){
     const insFields = 'spend,impressions,reach,clicks,ctr,cpc,cpm,actions,action_values';
     const campFields = `id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time,insights.date_preset(last_30d){${insFields}}`;
     const adsetFields = `id,name,campaign_id,status,targeting,daily_budget,lifetime_budget,insights.date_preset(last_30d){spend,reach,clicks,ctr,cpc,actions,action_values}`;
-    const [insData, campData, adsetData] = await Promise.all([
+    const adsFields = `id,name,status,campaign_id,creative{id,thumbnail_url,object_type},insights.date_preset(last_30d){spend,impressions,reach,clicks,ctr,cpc,actions,action_values}`;
+    const [insData, campData, adsetData, adsData] = await Promise.all([
       metaFetch(`/${accountId}/insights?fields=${insFields}&date_preset=last_30d`, token),
       metaFetch(`/${accountId}/campaigns?fields=${encodeURIComponent(campFields)}&limit=50`, token),
       metaFetch(`/${accountId}/adsets?fields=${encodeURIComponent(adsetFields)}&limit=100`, token),
+      metaFetch(`/${accountId}/ads?fields=${encodeURIComponent(adsFields)}&limit=100`, token),
     ]);
     if(insData.error){
       const code = insData.error.code;
@@ -504,20 +537,26 @@ async function loadRealAdsData(){
     realKpis = metaProcessInsights(insData);
     const realCamps = metaProcessCampaigns(campData);
     if(realCamps.length>0){ campaigns.length=0; campaigns.push(...realCamps); }
+    // campaign_id → name 매핑
+    const campMap = {};
+    campaigns.forEach(c=>{ campMap[c.id]=c.name; });
+
     const realAdsetsArr = metaProcessAdsets(adsetData);
     if(realAdsetsArr.length>0){
       realAdsets = realAdsetsArr;
-      // campaign_id → name 매핑
-      const campMap = {};
-      campaigns.forEach(c=>{ campMap[c.id]=c.name; });
       realAdsets.forEach(a=>{ if(campMap[a.camp]) a.camp=campMap[a.camp]; });
+    }
+    const realAdsArr = metaProcessAds(adsData);
+    if(realAdsArr.length>0){
+      realCreatives = realAdsArr;
+      realCreatives.forEach(a=>{ if(campMap[a.camp]) a.camp=campMap[a.camp]; });
     }
     const accName = localStorage.getItem('meta_ads_account_name')||accountId;
     document.querySelector('.acc-name').textContent = accName;
     document.querySelector('.acc-id').textContent = '광고 계정 ' + accountId.replace('act_','#');
     const connectBtn = document.getElementById('metaConnectBtn');
     if(connectBtn) connectBtn.textContent = '재연결';
-    toast(`실시간 데이터 로드 완료 · 캠페인 ${realCamps.length}개 · 광고세트 ${realAdsetsArr.length}개`,'success');
+    toast(`실시간 데이터 로드 완료 · 캠페인 ${realCamps.length}개 · 광고세트 ${realAdsetsArr.length}개 · 소재 ${realAdsArr.length}개`,'success');
     return true;
   } catch(e){
     toast('데이터 로드 실패: '+e.message,'warn');
@@ -858,35 +897,46 @@ function exportAdsetCSV(){
 }
 
 function pgCreatives(){
+  const src = realCreatives||creatives;
+  const isReal = !!realCreatives;
+  const fmtN = v=>v>=10000?(v/10000).toFixed(1)+'만':v.toLocaleString();
+  const fmtW = v=>v>=1000000?'₩'+(v/1000000).toFixed(1)+'M':v>=10000?'₩'+(v/10000).toFixed(0)+'만':'₩'+Math.round(v).toLocaleString();
+  // 최고 성과 소재 (지출>0인 것 중 ROAS 최고)
+  const topIdx = src.reduce((best,c,i)=>c.spend>0&&c.roas>(src[best]?.roas||0)?i:best,0);
+  const alertHtml = isReal
+    ? `<div class="inline-alert" style="background:#ecfdf5;border-color:#bbf7d0;color:#166534;margin-bottom:14px">${ic('check-circle',14,'#16a34a')} <span>실시간 Meta Ads 소재 데이터 · ${src.length}개 광고</span></div>`
+    : `<div class="inline-alert" style="margin-bottom:14px">${ic('info',14,'#1877f2')} <span>샘플 데이터입니다. &nbsp;<button onclick="showMetaConnect()" style="background:none;border:none;color:var(--brand);font-weight:700;cursor:pointer;font-size:12px">Meta Ads 연결 →</button></span></div>`;
   return `
 <div class="page-header">
   <h1>${ic('image',18,'var(--brand)')} 광고 소재 성과</h1>
   <div class="page-header-right">
-    <button class="btn-ghost">${ic('sliders',13)} 필터</button>
-    <button class="btn-ghost" onclick="toast('소재 리포트 다운로드 완료','success')">${ic('download',13)} 내보내기</button>
-    <button class="btn-primary" onclick="toast('소재 업로드 기능 준비 중입니다','info')">${ic('upload',13)} 소재 업로드</button>
+    <button class="btn-ghost" onclick="loadRealAdsData().then(ok=>{if(ok)navigate('creatives')})">${ic('refresh-cw',13)} 새로고침</button>
+    <button class="btn-ghost" onclick="exportCreativesCSV()">${ic('download',13)} 내보내기</button>
   </div>
 </div>
-
+${alertHtml}
 <!-- 소재 카드 그리드 -->
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:13px;margin-bottom:14px">
-  ${creatives.map((c,i)=>`
-  <div class="creative-card" onclick="showCreativeDetail(${i})">
-    <div style="height:100px;background:${c.bg};display:flex;align-items:center;justify-content:center;position:relative">
-      ${ic(c.icon,32,'rgba(255,255,255,.9)')}
-      <div style="position:absolute;top:8px;right:8px"><span class="pill ${statusMap[c.status].cls}" style="font-size:10.5px;padding:2px 7px"><span class="pill-dot"></span>${statusMap[c.status].label}</span></div>
-      ${i===0?`<div style="position:absolute;top:8px;left:8px"><span class="chip" style="background:rgba(0,0,0,.5);color:#fff;font-size:10.5px">🏆 최고 성과</span></div>`:''}
+  ${src.map((c,i)=>`
+  <div class="creative-card">
+    <div style="height:100px;background:${c.thumbnail?'#000':c.bg};display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden">
+      ${c.thumbnail
+        ? `<img src="${c.thumbnail}" style="width:100%;height:100%;object-fit:cover;opacity:.9" onerror="this.parentElement.style.background='${c.bg}';this.remove()">`
+        : ic(c.icon,32,'rgba(255,255,255,.9)')
+      }
+      <div style="position:absolute;top:8px;right:8px"><span class="pill ${statusMap[c.status]?.cls||'pill-end'}" style="font-size:10.5px;padding:2px 7px"><span class="pill-dot"></span>${statusMap[c.status]?.label||'—'}</span></div>
+      ${i===topIdx&&c.spend>0?`<div style="position:absolute;top:8px;left:8px"><span class="chip" style="background:rgba(0,0,0,.55);color:#fff;font-size:10.5px">🏆 최고 성과</span></div>`:''}
     </div>
     <div style="padding:13px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
-        <div>
-          <div style="font-size:13.5px;font-weight:700">${c.name}</div>
-          <div style="font-size:11.5px;color:var(--muted);margin-top:1px">${c.type} · ${c.camp}</div>
+        <div style="min-width:0">
+          <div style="font-size:13.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${c.name}</div>
+          <div style="font-size:11.5px;color:var(--muted);margin-top:1px">${c.type} · <span style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom">${c.camp}</span></div>
         </div>
-        <span style="font-size:14px;font-weight:800;color:${c.roas>=4?'#10b981':c.roas>=3?'#1877f2':'#f59e0b'}">${c.roas}x</span>
+        <span style="font-size:14px;font-weight:800;color:${c.roas>=4?'#10b981':c.roas>=3?'#1877f2':'#f59e0b'};flex-shrink:0;margin-left:6px">${c.spend>0?c.roas.toFixed(2)+'x':'—'}</span>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center">
-        ${[['노출',c.imp.toLocaleString()],['CTR',c.ctr+'%'],['CPC','₩'+c.cpc],['전환',c.conv]].map(([l,v])=>`
+        ${[['노출',fmtN(c.imp||0)],['CTR',(+c.ctr||0).toFixed(2)+'%'],['CPC',c.cpc?fmtW(c.cpc):'—'],['전환',Math.round(c.conv||0)]].map(([l,v])=>`
         <div style="background:var(--input-bg);border-radius:7px;padding:6px 4px">
           <div style="font-size:12px;font-weight:700">${v}</div>
           <div style="font-size:10px;color:var(--faint)">${l}</div>
@@ -898,29 +948,40 @@ function pgCreatives(){
 
 <!-- 소재 비교 테이블 -->
 <div class="card">
-  <div class="card-hd"><span class="card-title">소재 성과 비교</span><span class="card-menu" data-cmenu="creative-table">${ic('more-horizontal',14)}</span></div>
+  <div class="card-hd"><span class="card-title">소재 성과 비교</span></div>
   <table class="data-table">
     <thead><tr><th>소재</th><th>유형</th><th>캠페인</th><th>상태</th><th>노출</th><th>CTR</th><th>CPC</th><th>전환</th><th>지출</th><th>ROAS</th></tr></thead>
     <tbody>
-      ${creatives.map((c,i)=>`
-      <tr onclick="showCreativeDetail(${i})">
+      ${src.map((c,i)=>`
+      <tr>
         <td style="display:flex;align-items:center;gap:8px">
-          <div style="width:32px;height:32px;border-radius:7px;background:${c.bg};display:flex;align-items:center;justify-content:center;flex-shrink:0">${ic(c.icon,14,'rgba(255,255,255,.9)')}</div>
-          <span style="font-weight:600">${c.name}</span>
+          <div style="width:32px;height:32px;border-radius:7px;background:${c.bg};display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden">
+            ${c.thumbnail?`<img src="${c.thumbnail}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='${ic(c.icon,14,'rgba(255,255,255,.9)')}'">`  :ic(c.icon,14,'rgba(255,255,255,.9)')}
+          </div>
+          <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px">${c.name}</span>
         </td>
         <td><span class="chip" style="background:var(--input-bg);color:var(--muted)">${c.type}</span></td>
-        <td style="font-size:12px;color:var(--muted);white-space:nowrap">${c.camp}</td>
-        <td><span class="pill ${statusMap[c.status].cls}"><span class="pill-dot"></span>${statusMap[c.status].label}</span></td>
-        <td>${c.imp.toLocaleString()}</td>
-        <td>${c.ctr}%</td>
-        <td>₩${c.cpc.toLocaleString()}</td>
-        <td style="font-weight:600">${c.conv}</td>
-        <td>₩${c.spend.toLocaleString()}</td>
-        <td><span style="font-weight:700;color:${c.roas>=4?'#10b981':'#1877f2'}">${c.roas}x</span></td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap;max-width:100px;overflow:hidden;text-overflow:ellipsis">${c.camp}</td>
+        <td><span class="pill ${statusMap[c.status]?.cls||'pill-end'}"><span class="pill-dot"></span>${statusMap[c.status]?.label||'—'}</span></td>
+        <td>${fmtN(c.imp||0)}</td>
+        <td>${(+c.ctr||0).toFixed(2)}%</td>
+        <td>${c.cpc?fmtW(c.cpc):'—'}</td>
+        <td style="font-weight:600">${Math.round(c.conv||0)}</td>
+        <td>${c.spend?fmtW(c.spend):'—'}</td>
+        <td><span style="font-weight:700;color:${c.roas>=4?'#10b981':'#1877f2'}">${c.spend>0?c.roas.toFixed(2)+'x':'—'}</span></td>
       </tr>`).join('')}
     </tbody>
   </table>
 </div>`;
+}
+
+function exportCreativesCSV(){
+  const src = realCreatives||creatives;
+  const rows=[['소재명','유형','캠페인','상태','노출','CTR','CPC','전환','지출','ROAS'],...src.map(c=>[c.name,c.type,c.camp,c.status,c.imp,c.ctr,c.cpc,c.conv,c.spend,c.roas])];
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const el=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv'})),download:'creatives.csv'});
+  el.click();URL.revokeObjectURL(el.href);
+  toast('소재 CSV 다운로드 완료','success');
 }
 
 function pgAudiences(){
