@@ -444,6 +444,7 @@ async function metaFetch(path, token){
 
 let realAdsets = null;
 let realCreatives = null;
+let realPixelData = null;
 
 function metaProcessAds(data){
   if(!data||!data.data) return [];
@@ -518,11 +519,15 @@ async function loadRealAdsData(){
     const campFields = `id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time,insights.date_preset(last_30d){${insFields}}`;
     const adsetFields = `id,name,campaign_id,status,targeting,daily_budget,lifetime_budget,insights.date_preset(last_30d){spend,reach,clicks,ctr,cpc,actions,action_values}`;
     const adsFields = `id,name,status,campaign_id,creative{id,thumbnail_url,object_type},insights.date_preset(last_30d){spend,impressions,reach,clicks,ctr,cpc,actions,action_values}`;
-    const [insData, campData, adsetData, adsData] = await Promise.all([
+    const pixelFields = `id,name,creation_time,last_fired_time`;
+    const now = Math.floor(Date.now()/1000);
+    const weekAgo = now - 7*86400;
+    const [insData, campData, adsetData, adsData, pixelListData] = await Promise.all([
       metaFetch(`/${accountId}/insights?fields=${insFields}&date_preset=last_30d`, token),
       metaFetch(`/${accountId}/campaigns?fields=${encodeURIComponent(campFields)}&limit=50`, token),
       metaFetch(`/${accountId}/adsets?fields=${encodeURIComponent(adsetFields)}&limit=100`, token),
       metaFetch(`/${accountId}/ads?fields=${encodeURIComponent(adsFields)}&limit=100`, token),
+      metaFetch(`/${accountId}/adspixels?fields=${pixelFields}&limit=5`, token),
     ]);
     if(insData.error){
       const code = insData.error.code;
@@ -551,12 +556,35 @@ async function loadRealAdsData(){
       realCreatives = realAdsArr;
       realCreatives.forEach(a=>{ if(campMap[a.camp]) a.camp=campMap[a.camp]; });
     }
+    // 픽셀 데이터 처리
+    const pixels = pixelListData?.data||[];
+    if(pixels.length>0){
+      // 첫 번째 픽셀의 이벤트 통계 가져오기
+      const firstPixel = pixels[0];
+      try {
+        const statsData = await metaFetch(`/${firstPixel.id}/stats?aggregation=event_name&start_time=${weekAgo}&end_time=${now}`, token);
+        const events = (statsData?.data||[]).map(e=>({
+          name: e.event_name,
+          count: e.count||0,
+          lastFired: firstPixel.last_fired_time||null,
+        }));
+        realPixelData = {
+          id: firstPixel.id,
+          name: firstPixel.name||'Meta Pixel',
+          lastFired: firstPixel.last_fired_time||null,
+          totalEvents: events.reduce((s,e)=>s+e.count,0),
+          events,
+        };
+      } catch(e){ /* 픽셀 stats 실패 시 기본 정보만 저장 */
+        realPixelData = { id:firstPixel.id, name:firstPixel.name||'Meta Pixel', lastFired:firstPixel.last_fired_time||null, totalEvents:0, events:[] };
+      }
+    }
     const accName = localStorage.getItem('meta_ads_account_name')||accountId;
     document.querySelector('.acc-name').textContent = accName;
     document.querySelector('.acc-id').textContent = '광고 계정 ' + accountId.replace('act_','#');
     const connectBtn = document.getElementById('metaConnectBtn');
     if(connectBtn) connectBtn.textContent = '재연결';
-    toast(`실시간 데이터 로드 완료 · 캠페인 ${realCamps.length}개 · 광고세트 ${realAdsetsArr.length}개 · 소재 ${realAdsArr.length}개`,'success');
+    toast(`실시간 데이터 로드 완료 · 캠페인 ${realCamps.length}개 · 광고세트 ${realAdsetsArr.length}개 · 소재 ${realAdsArr.length}개${realPixelData?' · 픽셀 연동':''}`,'success');
     return true;
   } catch(e){
     toast('데이터 로드 실패: '+e.message,'warn');
@@ -1157,25 +1185,68 @@ function pgSettings(){
 }
 
 function pgPixels(){
+  const p = realPixelData;
+  const isReal = !!p;
+  const fmtTime = ts => {
+    if(!ts) return '—';
+    const d = new Date(typeof ts==='number'?ts*1000:ts);
+    const diff = (Date.now()-d)/1000;
+    if(diff<60) return '방금 전';
+    if(diff<3600) return Math.floor(diff/60)+'분 전';
+    if(diff<86400) return Math.floor(diff/3600)+'시간 전';
+    return Math.floor(diff/86400)+'일 전';
+  };
+  const pixelId = p?.id || '3829410-KR';
+  const pixelName = p?.name || 'Meta Pixel';
+  const totalEvents = p?.totalEvents || 42180;
+  const lastFired = p?.lastFired;
+  const alertHtml = isReal
+    ? `<div class="inline-alert" style="background:#ecfdf5;border-color:#bbf7d0;color:#166534;margin-bottom:14px">${ic('check-circle',14,'#16a34a')} <span>실시간 픽셀 데이터 · ${pixelName} (${pixelId})</span></div>`
+    : `<div class="inline-alert" style="margin-bottom:14px">${ic('info',14,'#1877f2')} <span>샘플 데이터입니다. &nbsp;<button onclick="showMetaConnect()" style="background:none;border:none;color:var(--brand);font-weight:700;cursor:pointer;font-size:12px">Meta Ads 연결 →</button></span></div>`;
+
+  // 이벤트 목록: 실제 or 샘플
+  const mockEvents = [
+    {name:'PageView',count:28400,lastFired:lastFired},
+    {name:'AddToCart',count:4820,lastFired:lastFired},
+    {name:'Purchase',count:1240,lastFired:lastFired},
+    {name:'InitiateCheckout',count:2180,lastFired:lastFired},
+    {name:'ViewContent',count:18200,lastFired:lastFired},
+    {name:'Lead',count:0,lastFired:null},
+  ];
+  const events = (isReal && p.events.length>0) ? p.events : mockEvents;
+  const maxCount = Math.max(...events.map(e=>e.count),1);
+
   return `
 <div class="page-header"><h1>${ic('code-2',18,'var(--brand)')} 픽셀 & 이벤트</h1>
-  <button class="btn-primary" onclick="toast('픽셀 설치 가이드를 이메일로 발송했습니다!','success')">${ic('send',13)} 설치 가이드 받기</button>
+  <div class="page-header-right">
+    <button class="btn-ghost" onclick="loadRealAdsData().then(ok=>{if(ok)navigate('pixels')})">${ic('refresh-cw',13)} 새로고침</button>
+  </div>
 </div>
+${alertHtml}
 <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px">
-  ${[['픽셀 ID','3829410-KR','#1877f2'],['상태','활성','#10b981'],['지난 7일 이벤트','42,180건','#7c3aed']].map(([l,v,c])=>`
-  <div class="stat-card"><div style="font-size:12px;color:var(--muted);margin-bottom:5px">${l}</div><div class="stat-big" style="color:${c};font-size:22px">${v}</div></div>`).join('')}
+  <div class="stat-card"><div style="font-size:12px;color:var(--muted);margin-bottom:5px">픽셀 ID</div><div class="stat-big" style="color:#1877f2;font-size:18px;word-break:break-all">${pixelId}</div></div>
+  <div class="stat-card"><div style="font-size:12px;color:var(--muted);margin-bottom:5px">상태</div><div class="stat-big" style="color:#10b981;font-size:22px">${isReal&&lastFired?'활성':'활성'}</div>${lastFired?`<div style="font-size:11px;color:var(--muted);margin-top:4px">마지막 수신 ${fmtTime(lastFired)}</div>`:''}</div>
+  <div class="stat-card"><div style="font-size:12px;color:var(--muted);margin-bottom:5px">지난 7일 이벤트</div><div class="stat-big" style="color:#7c3aed;font-size:22px">${isReal?totalEvents.toLocaleString():'42,180'}건</div></div>
 </div>
 <div class="card">
-  <div class="card-hd"><span class="card-title">추적 이벤트</span></div>
+  <div class="card-hd"><span class="card-title">추적 이벤트 (지난 7일)</span></div>
   <table class="data-table">
-    <thead><tr><th>이벤트</th><th>상태</th><th>지난 7일</th><th>마지막 수신</th></tr></thead>
+    <thead><tr><th>이벤트</th><th>상태</th><th>지난 7일</th><th>비중</th><th>마지막 수신</th></tr></thead>
     <tbody>
-      ${[['PageView','active','28,400','방금 전'],['AddToCart','active','4,820','3분 전'],['Purchase','active','1,240','12분 전'],['InitiateCheckout','active','2,180','8분 전'],['ViewContent','active','18,200','방금 전'],['Lead','inactive','0','없음']].map(([e,s,c,t])=>`
+      ${events.map(e=>`
       <tr>
-        <td style="font-weight:600;font-family:monospace">${e}</td>
-        <td><span class="pill ${s==='active'?'pill-active':'pill-end'}"><span class="pill-dot"></span>${s==='active'?'수신 중':'비활성'}</span></td>
-        <td>${c}</td>
-        <td style="color:var(--muted)">${t}</td>
+        <td style="font-weight:600;font-family:monospace">${e.name}</td>
+        <td><span class="pill ${e.count>0?'pill-active':'pill-end'}"><span class="pill-dot"></span>${e.count>0?'수신 중':'비활성'}</span></td>
+        <td style="font-weight:600">${e.count>0?e.count.toLocaleString()+'건':'0'}</td>
+        <td style="min-width:100px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div style="width:${Math.round(e.count/maxCount*100)}%;height:100%;background:#1877f2;border-radius:3px"></div>
+            </div>
+            <span style="font-size:11.5px;color:var(--muted);min-width:30px">${Math.round(e.count/maxCount*100)}%</span>
+          </div>
+        </td>
+        <td style="color:var(--muted)">${e.count>0?fmtTime(e.lastFired||lastFired):'없음'}</td>
       </tr>`).join('')}
     </tbody>
   </table>
