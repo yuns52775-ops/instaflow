@@ -445,6 +445,9 @@ async function metaFetch(path, token){
 let realAdsets = null;
 let realCreatives = null;
 let realPixelData = null;
+let realInsightsTrend = null;
+let realInsightsPlatform = null;
+let realInsightsDemographics = null;
 
 function metaProcessAds(data){
   if(!data||!data.data) return [];
@@ -522,12 +525,16 @@ async function loadRealAdsData(){
     const pixelFields = `id,name,creation_time,last_fired_time`;
     const now = Math.floor(Date.now()/1000);
     const weekAgo = now - 7*86400;
-    const [insData, campData, adsetData, adsData, pixelListData] = await Promise.all([
+    const trendFields = `spend,impressions,clicks,ctr,cpc,actions,action_values`;
+    const [insData, campData, adsetData, adsData, pixelListData, trendData, platformData, demoData] = await Promise.all([
       metaFetch(`/${accountId}/insights?fields=${insFields}&date_preset=last_30d`, token),
       metaFetch(`/${accountId}/campaigns?fields=${encodeURIComponent(campFields)}&limit=50`, token),
       metaFetch(`/${accountId}/adsets?fields=${encodeURIComponent(adsetFields)}&limit=100`, token),
       metaFetch(`/${accountId}/ads?fields=${encodeURIComponent(adsFields)}&limit=100`, token),
       metaFetch(`/${accountId}/adspixels?fields=${pixelFields}&limit=5`, token),
+      metaFetch(`/${accountId}/insights?fields=${trendFields}&date_preset=last_30d&time_increment=1&limit=31`, token),
+      metaFetch(`/${accountId}/insights?fields=${trendFields}&date_preset=last_30d&breakdowns=publisher_platform`, token),
+      metaFetch(`/${accountId}/insights?fields=spend,impressions,clicks,ctr&date_preset=last_30d&breakdowns=age,gender`, token),
     ]);
     if(insData.error){
       const code = insData.error.code;
@@ -584,6 +591,41 @@ async function loadRealAdsData(){
     document.querySelector('.acc-id').textContent = '광고 계정 ' + accountId.replace('act_','#');
     const connectBtn = document.getElementById('metaConnectBtn');
     if(connectBtn) connectBtn.textContent = '재연결';
+    // 일별 트렌드 데이터 처리
+    if(trendData?.data?.length>0){
+      const days = trendData.data;
+      realInsightsTrend = {
+        labels: days.map(d=>d.date_start.slice(5).replace('-','/')),
+        spendVals: days.map(d=>parseFloat(d.spend)||0),
+        convVals: days.map(d=>metaGetAction(d.actions,'purchase')||metaGetAction(d.actions,'complete_registration')||0),
+        roasVals: days.map(d=>{ const s=parseFloat(d.spend)||0; const v=metaGetAction(d.action_values,'purchase')||0; return s>0?+(v/s).toFixed(2):0; }),
+        ctrVals: days.map(d=>parseFloat(d.ctr)||0),
+      };
+      // 글로벌 차트 변수도 업데이트
+      spendLabels.length=0; spendLabels.push(...realInsightsTrend.labels);
+      spendVals.length=0; spendVals.push(...realInsightsTrend.spendVals);
+      roasVals.length=0; roasVals.push(...realInsightsTrend.roasVals);
+    }
+    // 플랫폼별 데이터 처리
+    if(platformData?.data?.length>0){
+      realInsightsPlatform = platformData.data.map(d=>{
+        const spend=parseFloat(d.spend)||0;
+        const conv=metaGetAction(d.actions,'purchase')||metaGetAction(d.actions,'complete_registration')||0;
+        const convVal=metaGetAction(d.action_values,'purchase')||0;
+        return {platform:d.publisher_platform||'—',spend,impressions:parseInt(d.impressions)||0,clicks:parseInt(d.clicks)||0,ctr:parseFloat(d.ctr)||0,roas:spend>0?+(convVal/spend).toFixed(2):0,conv};
+      }).sort((a,b)=>b.roas-a.roas);
+    }
+    // 연령/성별 데이터 처리
+    if(demoData?.data?.length>0){
+      realInsightsDemographics = demoData.data.map(d=>({
+        age:d.age||'—', gender:d.gender||'—',
+        impressions:parseInt(d.impressions)||0,
+        clicks:parseInt(d.clicks)||0,
+        ctr:parseFloat(d.ctr)||0,
+        spend:parseFloat(d.spend)||0,
+      }));
+    }
+
     toast(`실시간 데이터 로드 완료 · 캠페인 ${realCamps.length}개 · 광고세트 ${realAdsetsArr.length}개 · 소재 ${realAdsArr.length}개${realPixelData?' · 픽셀 연동':''}`,'success');
     return true;
   } catch(e){
@@ -1051,45 +1093,181 @@ function pgAudiences(){
 }
 
 function pgInsights(){
+  const isReal = !!(realInsightsTrend||realInsightsPlatform);
+  const alertHtml = isReal
+    ? `<div class="inline-alert" style="background:#ecfdf5;border-color:#bbf7d0;color:#166534;margin-bottom:14px">${ic('check-circle',14,'#16a34a')} <span>실시간 Meta Ads 인사이트 · 최근 30일</span></div>`
+    : `<div class="inline-alert" style="margin-bottom:14px">${ic('info',14,'#1877f2')} <span>샘플 데이터입니다. &nbsp;<button onclick="showMetaConnect()" style="background:none;border:none;color:var(--brand);font-weight:700;cursor:pointer;font-size:12px">Meta Ads 연결 →</button></span></div>`;
+
+  // 실제 데이터 기반 인사이트 자동 생성
+  let insightItems;
+  if(realInsightsTrend&&realInsightsPlatform){
+    const t = realInsightsTrend;
+    const maxRoasIdx = t.roasVals.indexOf(Math.max(...t.roasVals));
+    const maxRoas = t.roasVals[maxRoasIdx].toFixed(2);
+    const maxRoasDate = t.labels[maxRoasIdx]||'—';
+    const topPlatform = realInsightsPlatform[0];
+    const worstPlatform = [...realInsightsPlatform].sort((a,b)=>a.roas-b.roas)[0];
+    const bestCamp = campaigns.filter(c=>c.spend>0).sort((a,b)=>b.roas-a.roas)[0];
+    const worstCamp = campaigns.filter(c=>c.spend>0).sort((a,b)=>a.roas-b.roas)[0];
+    insightItems = [
+      ['trending-up','#10b981','ROAS 최고 기간',`${maxRoasDate} ROAS가 ${maxRoas}x로 최근 30일 중 가장 높았습니다.${bestCamp?' "'+bestCamp.name+'" 캠페인을 참고하세요.':''}`],
+      ['monitor','#1877f2','최고 성과 지면',`${topPlatform.platform} 지면의 ROAS가 ${topPlatform.roas}x로 가장 높습니다. 해당 지면 예산 비중을 늘리세요.`],
+      worstCamp&&bestCamp&&worstCamp.id!==bestCamp.id
+        ?['alert-triangle','#f59e0b','저성과 캠페인',`"${worstCamp.name}" 캠페인 ROAS가 ${worstCamp.roas.toFixed(2)}x로 가장 낮습니다. 예산 조정 또는 일시 중지를 검토하세요.`]
+        :['zap','#ec4899','지출 최적화',`지난 30일 지출 중 ${topPlatform.platform}에서 CTR ${topPlatform.ctr.toFixed(2)}%를 기록했습니다.`],
+      worstPlatform&&worstPlatform.platform!==topPlatform.platform
+        ?['trending-down','#ef4444','저성과 지면',`${worstPlatform.platform} 지면 ROAS가 ${worstPlatform.roas}x로 낮습니다. 예산 재배분을 고려하세요.`]
+        :['bar-chart-2','#7c3aed','CTR 트렌드',`최근 30일 평균 CTR: ${realKpis?realKpis.ctr.toFixed(2)+'%':'데이터 확인 중'}`],
+    ];
+  } else {
+    insightItems = [
+      ['trending-up','#10b981','ROAS 최고 기간','1월 25-29일 ROAS가 4.4x로 전체 기간 중 가장 높았습니다. 이 기간 집행된 "봄 시즌 프로모션" 캠페인의 예산 비중을 높이세요.'],
+      ['clock','#1877f2','최적 게재 시간','오후 7-9시 CTR이 3.2%로 가장 높습니다. 예산 집중 시간대 설정을 권장합니다.'],
+      ['users','#7c3aed','고성과 오디언스','장바구니 미구매 리타겟팅 세트의 ROAS가 7.2x로 가장 높습니다. 예산 증액을 고려하세요.'],
+      ['alert-triangle','#f59e0b','주의','신규 고객 확보 캠페인의 빈도(Frequency)가 4.2로 피로도 한계(3.5)를 초과했습니다. 소재를 교체하거나 타겟을 확대하세요.'],
+      ['zap','#ec4899','소재 추천','카루셀 광고보다 이미지 단일 광고의 CTR이 81% 높습니다. 이미지 광고 비중을 늘리세요.'],
+    ];
+  }
+
   return `
 <div class="page-header">
   <h1>${ic('bar-chart-2',18,'var(--brand)')} 광고 인사이트</h1>
   <div class="page-header-right">
-    <div class="date-btn">${ic('calendar',13)} 2025. 1. 1 – 2. 1</div>
-    <button class="btn-primary" onclick="toast('인사이트 리포트 다운로드 완료','success')">${ic('download',13)} 내보내기</button>
+    <button class="btn-ghost" onclick="loadRealAdsData().then(ok=>{if(ok)navigate('insights')})">${ic('refresh-cw',13)} 새로고침</button>
   </div>
 </div>
+${alertHtml}
 <div class="section-tabs">
-  ${['성과 추이','지면 분석','요일/시간','연령/성별'].map((t,i)=>`<div class="stab${i===0?' on':''}" onclick="switchInsightTab(this,'${t}')">${t}</div>`).join('')}
+  ${['성과 추이','지면 분석','연령/성별'].map((t,i)=>`<div class="stab${i===0?' on':''}" onclick="switchInsightTabReal(this,'${t}')">${t}</div>`).join('')}
 </div>
 <div id="insightContent">
+  ${renderInsightTab('성과 추이')}
+</div>`;
+}
+
+function renderInsightTab(name){
+  const fmtW = v=>v>=1000000?'₩'+(v/1000000).toFixed(1)+'M':v>=10000?'₩'+(v/10000).toFixed(0)+'만':'₩'+Math.round(v).toLocaleString();
+  if(name==='성과 추이'){
+    const isReal=!!realInsightsTrend;
+    const insightItems = pgInsights._lastInsightItems||[];
+    return `
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-bottom:13px">
-    <div class="card">
-      <div class="card-hd"><span class="card-title">지출 vs 전환 추이</span></div>
-      <canvas id="insightChart1" height="200"></canvas>
-    </div>
-    <div class="card">
-      <div class="card-hd"><span class="card-title">ROAS & CTR 추이</span></div>
-      <canvas id="insightChart2" height="200"></canvas>
-    </div>
+    <div class="card"><div class="card-hd"><span class="card-title">지출 vs 전환 추이${isReal?' <span style="font-size:10px;background:#ecfdf5;color:#16a34a;padding:2px 7px;border-radius:20px;font-weight:600">실시간</span>':''}</span></div><canvas id="insightChart1" height="200"></canvas></div>
+    <div class="card"><div class="card-hd"><span class="card-title">ROAS & CTR 추이${isReal?' <span style="font-size:10px;background:#ecfdf5;color:#16a34a;padding:2px 7px;border-radius:20px;font-weight:600">실시간</span>':''}</span></div><canvas id="insightChart2" height="200"></canvas></div>
   </div>
   <div class="card">
-    <div class="card-hd"><span class="card-title">주요 인사이트 & AI 추천</span></div>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      ${[
-        ['trending-up','#10b981','ROAS 최고 기간','1월 25-29일 ROAS가 4.4x로 전체 기간 중 가장 높았습니다. 이 기간 집행된 "봄 시즌 프로모션" 캠페인의 예산 비중을 높이세요.'],
-        ['clock','#1877f2','최적 게재 시간','오후 7-9시 CTR이 3.2%로 가장 높습니다. 예산 집중 시간대 설정을 권장합니다.'],
-        ['users','#7c3aed','고성과 오디언스','장바구니 미구매 리타겟팅 세트의 ROAS가 7.2x로 가장 높습니다. 예산 증액을 고려하세요.'],
-        ['alert-triangle','#f59e0b','주의','신규 고객 확보 캠페인의 빈도(Frequency)가 4.2로 피로도 한계(3.5)를 초과했습니다. 소재를 교체하거나 타겟을 확대하세요.'],
-        ['zap','#ec4899','소재 추천','카루셀 광고보다 이미지 단일 광고의 CTR이 81% 높습니다. 이미지 광고 비중을 늘리세요.'],
-      ].map(([i,c,t,d])=>`
-      <div style="display:flex;gap:12px;padding:13px;border-radius:10px;background:var(--input-bg);border-left:3px solid ${c}">
-        <div style="width:32px;height:32px;border-radius:8px;background:${c}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">${ic(i,15,c)}</div>
-        <div><div style="font-size:13px;font-weight:700;margin-bottom:4px">${t}</div><div style="font-size:12.5px;color:var(--muted);line-height:1.6">${d}</div></div>
-      </div>`).join('')}
+    <div class="card-hd"><span class="card-title">주요 인사이트${isReal?' & 자동 분석':' & AI 추천'}</span></div>
+    <div style="display:flex;flex-direction:column;gap:10px" id="insightItemsEl"></div>
+  </div>`;
+  }
+  if(name==='지면 분석'){
+    const src = realInsightsPlatform;
+    if(!src) return `<div class="inline-alert">${ic('info',14,'#1877f2')} Meta Ads를 연결하면 실제 지면 분석이 표시됩니다.</div>`;
+    const maxRoas = Math.max(...src.map(p=>p.roas),0.01);
+    const platLabel = {'facebook':'Facebook','instagram':'Instagram','audience_network':'Audience Network','messenger':'Messenger'};
+    return `<div class="card">
+      <div class="card-hd"><span class="card-title">지면별 성과 (최근 30일)</span></div>
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">
+        ${src.map(p=>`
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:13px;font-weight:600">${platLabel[p.platform]||p.platform}</span>
+            <div style="display:flex;gap:12px;font-size:12.5px">
+              <span style="color:var(--muted)">지출 ${fmtW(p.spend)}</span>
+              <span style="color:var(--muted)">CTR ${p.ctr.toFixed(2)}%</span>
+              <span style="font-weight:700;color:${p.roas>=4?'#10b981':p.roas>=2?'#1877f2':'#f59e0b'}">ROAS ${p.roas}x</span>
+            </div>
+          </div>
+          <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+            <div style="width:${Math.round(p.roas/maxRoas*100)}%;height:100%;background:linear-gradient(90deg,#1877f2,#0d65d9);border-radius:4px"></div>
+          </div>
+        </div>`).join('')}
+      </div>
+      <table class="data-table"><thead><tr><th>지면</th><th>지출</th><th>노출</th><th>클릭</th><th>CTR</th><th>전환</th><th>ROAS</th></tr></thead>
+      <tbody>${src.map(p=>`<tr>
+        <td style="font-weight:600">${platLabel[p.platform]||p.platform}</td>
+        <td>${fmtW(p.spend)}</td><td>${p.impressions.toLocaleString()}</td><td>${p.clicks.toLocaleString()}</td>
+        <td>${p.ctr.toFixed(2)}%</td><td>${Math.round(p.conv)}</td>
+        <td><span style="font-weight:700;color:${p.roas>=4?'#10b981':p.roas>=2?'#1877f2':'#f59e0b'}">${p.roas}x</span></td>
+      </tr>`).join('')}</tbody></table>
+    </div>`;
+  }
+  if(name==='연령/성별'){
+    const src = realInsightsDemographics;
+    if(!src) return `<div class="inline-alert">${ic('info',14,'#1877f2')} Meta Ads를 연결하면 실제 연령/성별 분석이 표시됩니다.</div>`;
+    const ages = [...new Set(src.map(d=>d.age))].sort();
+    const maleData = ages.map(a=>{ const d=src.find(x=>x.age===a&&x.gender==='male'); return +(d?.ctr||0).toFixed(2); });
+    const femaleData = ages.map(a=>{ const d=src.find(x=>x.age===a&&x.gender==='female'); return +(d?.ctr||0).toFixed(2); });
+    return `<div class="card">
+      <div class="card-hd"><span class="card-title">연령 & 성별 CTR 분포</span></div>
+      <canvas id="audDemoChartReal" height="200"></canvas>
     </div>
-  </div>
-</div>`;
+    <div class="card" style="margin-top:13px">
+      <div class="card-hd"><span class="card-title">연령/성별 상세</span></div>
+      <table class="data-table"><thead><tr><th>연령대</th><th>성별</th><th>노출</th><th>클릭</th><th>CTR</th><th>지출</th></tr></thead>
+      <tbody>${src.sort((a,b)=>b.ctr-a.ctr).map(d=>`<tr>
+        <td style="font-weight:600">${d.age}</td>
+        <td>${d.gender==='male'?'남성':d.gender==='female'?'여성':'전체'}</td>
+        <td>${d.impressions.toLocaleString()}</td><td>${d.clicks.toLocaleString()}</td>
+        <td style="font-weight:600;color:${d.ctr>=3?'#10b981':d.ctr>=2?'#1877f2':'var(--text)'}">${d.ctr.toFixed(2)}%</td>
+        <td>${fmtW(d.spend)}</td>
+      </tr>`).join('')}</tbody></table>
+    </div>
+    <script>
+      setTimeout(()=>{
+        const el=document.getElementById('audDemoChartReal'); if(!el) return;
+        new Chart(el.getContext('2d'),{type:'bar',
+          data:{labels:${JSON.stringify(ages)},datasets:[
+            {label:'남성 CTR(%)',data:${JSON.stringify(maleData)},backgroundColor:'#1877f2',borderRadius:5},
+            {label:'여성 CTR(%)',data:${JSON.stringify(femaleData)},backgroundColor:'#ec4899',borderRadius:5},
+          ]},options:{plugins:{legend:{position:'bottom',labels:{boxWidth:10,font:{size:11}}}},scales:{x:{grid:{display:false}},y:{ticks:{callback:v=>v+'%'},grid:{color:'rgba(0,0,0,.04)'}}}}});
+      },50);
+    <\/script>`;
+  }
+  return '';
+}
+
+window.switchInsightTabReal = function(tab, name){
+  document.querySelectorAll('.stab').forEach(t=>t.classList.remove('on'));
+  tab.classList.add('on');
+  document.getElementById('insightContent').innerHTML = renderInsightTab(name);
+  ri();
+  if(name==='성과 추이') setTimeout(()=>{ mkInsightChart1(); mkInsightChart2(); renderInsightItemsReal(); },50);
+}
+
+function renderInsightItemsReal(){
+  const el = document.getElementById('insightItemsEl'); if(!el) return;
+  const isReal=!!(realInsightsTrend&&realInsightsPlatform);
+  const fmtW = v=>v>=1000000?'₩'+(v/1000000).toFixed(1)+'M':v>=10000?'₩'+(v/10000).toFixed(0)+'만':'₩'+Math.round(v).toLocaleString();
+  let items;
+  if(isReal){
+    const t = realInsightsTrend;
+    const maxRoasIdx = t.roasVals.indexOf(Math.max(...t.roasVals));
+    const maxRoas = t.roasVals[maxRoasIdx].toFixed(2);
+    const maxRoasDate = t.labels[maxRoasIdx]||'—';
+    const topPlatform = realInsightsPlatform[0];
+    const bestCamp = campaigns.filter(c=>c.spend>0).sort((a,b)=>b.roas-a.roas)[0];
+    const worstCamp = campaigns.filter(c=>c.spend>0).sort((a,b)=>a.roas-b.roas)[0];
+    items = [
+      ['trending-up','#10b981','ROAS 최고 기간',`${maxRoasDate} ROAS ${maxRoas}x로 최근 30일 최고.${bestCamp?' "'+bestCamp.name+'" 캠페인의 예산 비중을 높이세요.':''}`],
+      ['monitor','#1877f2','최고 성과 지면',`${topPlatform.platform} 지면 ROAS ${topPlatform.roas}x · CTR ${topPlatform.ctr.toFixed(2)}%. 해당 지면 예산 비중을 높이세요.`],
+      bestCamp?['award','#10b981','최고 성과 캠페인',`"${bestCamp.name}" ROAS ${bestCamp.roas.toFixed(2)}x, 전환 ${Math.round(bestCamp.conv)}건.`]:null,
+      worstCamp&&worstCamp.id!==bestCamp?.id?['alert-triangle','#f59e0b','저성과 캠페인',`"${worstCamp.name}" ROAS ${worstCamp.roas.toFixed(2)}x. 예산 조정 또는 일시 중지를 검토하세요.`]:null,
+    ].filter(Boolean);
+  } else {
+    items = [
+      ['trending-up','#10b981','ROAS 최고 기간','1월 25-29일 ROAS가 4.4x로 전체 기간 중 가장 높았습니다.'],
+      ['clock','#1877f2','최적 게재 시간','오후 7-9시 CTR이 3.2%로 가장 높습니다.'],
+      ['users','#7c3aed','고성과 오디언스','장바구니 미구매 리타겟팅 세트의 ROAS가 7.2x로 가장 높습니다.'],
+      ['alert-triangle','#f59e0b','주의','신규 고객 확보 캠페인 빈도가 피로도 한계를 초과했습니다.'],
+    ];
+  }
+  el.innerHTML = items.map(([icon,c,t,d])=>`
+    <div style="display:flex;gap:12px;padding:13px;border-radius:10px;background:var(--input-bg);border-left:3px solid ${c}">
+      <div style="width:32px;height:32px;border-radius:8px;background:${c}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">${ic(icon,15,c)}</div>
+      <div><div style="font-size:13px;font-weight:700;margin-bottom:4px">${t}</div><div style="font-size:12.5px;color:var(--muted);line-height:1.6">${d}</div></div>
+    </div>`).join('');
+  ri();
 }
 
 function pgReports(){
@@ -1756,7 +1934,7 @@ function initCharts(page){
   },50);
   if(page==='campaigns') setTimeout(()=>mkCampCompareChart(),50);
   if(page==='audiences') setTimeout(()=>mkAudDemoChart(),50);
-  if(page==='insights') setTimeout(()=>{mkInsightChart1();mkInsightChart2();},50);
+  if(page==='insights') setTimeout(()=>{mkInsightChart1();mkInsightChart2();renderInsightItemsReal();},50);
   if(page==='billing') setTimeout(()=>mkBillingChart(),50);
   if(page==='attribution') setTimeout(()=>mkAttrModelChart(),50);
 }
