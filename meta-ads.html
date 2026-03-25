@@ -448,6 +448,7 @@ let realPixelData = null;
 let realInsightsTrend = null;
 let realInsightsPlatform = null;
 let realInsightsDemographics = null;
+let realAttributionWindows = null;
 
 function metaProcessAds(data){
   if(!data||!data.data) return [];
@@ -526,7 +527,7 @@ async function loadRealAdsData(){
     const now = Math.floor(Date.now()/1000);
     const weekAgo = now - 7*86400;
     const trendFields = `spend,impressions,clicks,ctr,cpc,actions,action_values`;
-    const [insData, campData, adsetData, adsData, pixelListData, trendData, platformData, demoData] = await Promise.all([
+    const [insData, campData, adsetData, adsData, pixelListData, trendData, platformData, demoData, attrData] = await Promise.all([
       metaFetch(`/${accountId}/insights?fields=${insFields}&date_preset=last_30d`, token),
       metaFetch(`/${accountId}/campaigns?fields=${encodeURIComponent(campFields)}&limit=50`, token),
       metaFetch(`/${accountId}/adsets?fields=${encodeURIComponent(adsetFields)}&limit=100`, token),
@@ -535,6 +536,7 @@ async function loadRealAdsData(){
       metaFetch(`/${accountId}/insights?fields=${trendFields}&date_preset=last_30d&time_increment=1&limit=31`, token),
       metaFetch(`/${accountId}/insights?fields=${trendFields}&date_preset=last_30d&breakdowns=publisher_platform`, token),
       metaFetch(`/${accountId}/insights?fields=spend,impressions,clicks,ctr&date_preset=last_30d&breakdowns=age,gender`, token),
+      metaFetch(`/${accountId}/insights?fields=spend,actions,action_values&date_preset=last_30d&action_attribution_windows=${encodeURIComponent('["1d_click","7d_click","28d_click","1d_view"]')}`, token),
     ]);
     if(insData.error){
       const code = insData.error.code;
@@ -624,6 +626,31 @@ async function loadRealAdsData(){
         ctr:parseFloat(d.ctr)||0,
         spend:parseFloat(d.spend)||0,
       }));
+    }
+
+    // 기여 윈도우 데이터
+    if(attrData?.data?.length>0){
+      const d = attrData.data[0];
+      const getConv=(actions,window)=>{
+        if(!actions) return 0;
+        const a=actions.find(x=>(x.action_type==='purchase'||x.action_type==='offsite_conversion.fb_pixel_purchase')&&x[window]!==undefined);
+        return a?parseFloat(a[window]||a.value)||0:metaGetAction(actions,'purchase');
+      };
+      const getVal=(avs,window)=>{
+        if(!avs) return 0;
+        const a=avs.find(x=>(x.action_type==='purchase'||x.action_type==='offsite_conversion.fb_pixel_purchase')&&x[window]!==undefined);
+        return a?parseFloat(a[window]||a.value)||0:metaGetAction(avs,'purchase');
+      };
+      const spend=parseFloat(d.spend)||0;
+      realAttributionWindows={
+        spend,
+        windows:[
+          {label:'1일 클릭', conv:getConv(d.actions,'1d_click'), val:getVal(d.action_values,'1d_click')},
+          {label:'7일 클릭', conv:getConv(d.actions,'7d_click'), val:getVal(d.action_values,'7d_click')},
+          {label:'28일 클릭',conv:getConv(d.actions,'28d_click'),val:getVal(d.action_values,'28d_click')},
+          {label:'1일 뷰',   conv:getConv(d.actions,'1d_view'),  val:getVal(d.action_values,'1d_view')},
+        ],
+      };
     }
 
     toast(`실시간 데이터 로드 완료 · 캠페인 ${realCamps.length}개 · 광고세트 ${realAdsetsArr.length}개 · 소재 ${realAdsArr.length}개${realPixelData?' · 픽셀 연동':''}`,'success');
@@ -1432,127 +1459,173 @@ ${alertHtml}
 }
 
 function pgAttribution(){
-  const journeys = [
-    { path:['디스플레이 광고','검색 광고','리타겟팅'],  conv:284, rev:42600000, pct:31 },
-    { path:['소셜 광고','리타겟팅'],                    conv:198, rev:29700000, pct:22 },
-    { path:['디스플레이 광고','소셜 광고','리타겟팅'],  conv:162, rev:24300000, pct:18 },
-    { path:['검색 광고'],                               conv:134, rev:20100000, pct:15 },
-    { path:['소셜 광고','검색 광고'],                   conv:98,  rev:14700000, pct:11 },
-    { path:['디스플레이 광고'],                         conv:28,  rev:4200000,  pct:3  },
-  ];
-  const models = [
-    { name:'라스트 클릭',    vals:[5,8,12,75],       desc:'마지막 접점에 100% 기여' },
-    { name:'퍼스트 클릭',   vals:[75,12,8,5],        desc:'첫 번째 접점에 100% 기여' },
-    { name:'선형 모델',     vals:[25,25,25,25],       desc:'모든 접점에 균등 배분' },
-    { name:'시간 감소',     vals:[10,15,25,50],       desc:'전환에 가까울수록 높은 기여' },
-    { name:'위치 기반',     vals:[40,10,10,40],       desc:'첫/마지막 접점에 40% 씩' },
-    { name:'데이터 기반',   vals:[18,22,28,32],       desc:'AI가 최적 기여율 산출' },
-  ];
-  const channels = [
-    { name:'리타겟팅',     last:42, data:38, color:'#1877f2' },
-    { name:'검색 광고',    last:28, data:22, color:'#10b981' },
-    { name:'소셜 광고',    last:18, data:24, color:'#f59e0b' },
-    { name:'디스플레이',   last:12, data:16, color:'#6366f1' },
-  ];
+  const k = realKpis;
+  const aw = realAttributionWindows;
+  const isReal = !!(k&&aw);
+  const fmtW = v=>v>=1000000?'₩'+(v/1000000).toFixed(1)+'M':v>=10000?'₩'+(v/10000).toFixed(0)+'만':'₩'+Math.round(v).toLocaleString();
+  const fmtN = v=>v>=10000?(v/10000).toFixed(1)+'만':Math.round(v).toLocaleString();
+
+  const totalConv = k?.conv??904;
+  const totalVal  = k?.convVal??135600000;
+  const spend     = k?.spend??4080000;
+  const cpa       = totalConv>0 ? spend/totalConv : 150000;
+
+  const alertHtml = isReal
+    ? `<div class="inline-alert" style="background:#ecfdf5;border-color:#bbf7d0;color:#166534;margin-bottom:14px">${ic('check-circle',14,'#16a34a')} <span>실시간 Meta Ads 기여 분석 · 최근 30일</span></div>`
+    : `<div class="inline-alert" style="margin-bottom:14px">${ic('info',14,'#1877f2')} <span>샘플 데이터입니다. &nbsp;<button onclick="showMetaConnect()" style="background:none;border:none;color:var(--brand);font-weight:700;cursor:pointer;font-size:12px">Meta Ads 연결 →</button></span></div>`;
+
+  // 기여 윈도우 비교 섹션
+  const windowSection = aw ? (() => {
+    const maxConv = Math.max(...aw.windows.map(w=>w.conv),1);
+    return `<div class="card" style="margin-bottom:14px">
+      <div class="card-hd"><span class="card-title">기여 윈도우별 전환 비교</span>
+        <span style="font-size:11.5px;background:#eff6ff;color:#1877f2;padding:3px 9px;border-radius:20px;font-weight:600">실시간</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        ${aw.windows.map(w=>`
+        <div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:5px">
+            <span style="font-size:13px;font-weight:600">${w.label}</span>
+            <div style="font-size:12.5px;display:flex;gap:12px">
+              <span style="color:var(--muted)">전환 <b style="color:var(--text)">${fmtN(w.conv)}건</b></span>
+              <span style="color:var(--muted)">매출 <b style="color:#10b981">${w.val?fmtW(w.val):'—'}</b></span>
+              <span style="color:var(--muted)">ROAS <b style="color:${w.val&&aw.spend>0?(w.val/aw.spend)>=3?'#10b981':'#1877f2':'var(--muted)'}">${w.val&&aw.spend>0?(w.val/aw.spend).toFixed(2)+'x':'—'}</b></span>
+            </div>
+          </div>
+          <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+            <div style="width:${Math.round(w.conv/maxConv*100)}%;height:100%;background:linear-gradient(90deg,#1877f2,#0d65d9);border-radius:4px;transition:width .5s"></div>
+          </div>
+        </div>`).join('')}
+      </div>
+      <div style="margin-top:14px;padding:12px;background:var(--input-bg);border-radius:10px;font-size:12.5px;color:var(--muted);line-height:1.7">
+        ${ic('info',12,'#1877f2')} <b>기여 윈도우</b>란 광고 클릭/노출 후 전환을 인정하는 기간입니다.
+        7일 클릭 기준이 Meta 기본값이며, 기간이 길수록 더 많은 전환이 기여됩니다.
+      </div>
+    </div>`;
+  })() : '';
+
+  // 캠페인별 기여 테이블 (실제 데이터)
+  const campSrc = campaigns.filter(c=>c.spend>0).sort((a,b)=>b.conv-a.conv);
+  const totalCampConv = campSrc.reduce((s,c)=>s+(c.conv||0),0)||1;
+
+  // 플랫폼별 채널 기여
+  const platSrc = realInsightsPlatform;
+  const platLabel = {'facebook':'Facebook','instagram':'Instagram','audience_network':'Audience Network','messenger':'Messenger'};
+  const totalPlatSpend = platSrc?.reduce((s,p)=>s+p.spend,0)||1;
+
   return `
-<div class="page-header"><h1>기여 분석</h1>
+<div class="page-header"><h1>${ic('git-branch',18,'var(--brand)')} 기여 분석</h1>
   <div class="page-header-right">
-    <button class="btn-primary" onclick="toast('기여 분석 리포트 다운로드 완료!','success')">${ic('download',13)} 내보내기</button>
+    <button class="btn-ghost" onclick="loadRealAdsData().then(ok=>{if(ok)navigate('attribution')})">${ic('refresh-cw',13)} 새로고침</button>
   </div>
 </div>
+${alertHtml}
 
-<div class="kpi8" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px">
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px">
   ${[
-    ['904','총 전환 수','#1877f2','target'],
-    ['₩135,600,000','총 기여 매출','#10b981','trending-up'],
-    ['3.2회','평균 터치포인트','#f59e0b','git-branch'],
-    ['₩150,000','전환당 비용(CPA)','#6366f1','zap'],
-  ].map(([v,l,c,i])=>`
+    [isReal?fmtN(totalConv):'904','총 전환 수','#1877f2','target'],
+    [isReal?(totalVal?fmtW(totalVal):'—'):'₩135.6M','총 기여 매출','#10b981','trending-up'],
+    [isReal?fmtW(cpa):'₩150,000','전환당 비용(CPA)','#6366f1','zap'],
+    [isReal?fmtW(spend):'₩4,080,000','총 광고 지출','#f59e0b','credit-card'],
+  ].map(([v,l,c,ico])=>`
   <div class="card" style="padding:16px 18px">
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
       <span style="font-size:12px;color:var(--muted);font-weight:500">${l}</span>
-      <div style="width:30px;height:30px;border-radius:8px;background:${c}18;display:flex;align-items:center;justify-content:center">${ic(i,13,c)}</div>
+      <div style="width:30px;height:30px;border-radius:8px;background:${c}18;display:flex;align-items:center;justify-content:center">${ic(ico,13,c)}</div>
     </div>
     <div style="font-size:clamp(14px,1.5vw,22px);font-weight:700;color:${c}">${v}</div>
   </div>`).join('')}
 </div>
 
+${windowSection}
+
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
+  <!-- 캠페인별 전환 기여 -->
   <div class="card">
-    <div class="card-hd"><span class="card-title">모델별 채널 기여율 비교</span>
-      <span style="font-size:11.5px;background:#eff6ff;color:#1877f2;padding:3px 9px;border-radius:20px;font-weight:600">추천: 데이터 기반</span>
-    </div>
-    <canvas id="attrModelChart" height="210"></canvas>
+    <div class="card-hd"><span class="card-title">캠페인별 전환 기여</span>${isReal?`<span style="font-size:10px;background:#ecfdf5;color:#16a34a;padding:2px 7px;border-radius:20px;font-weight:600">실시간</span>`:''}</div>
+    ${campSrc.length>0 ? `<div style="display:flex;flex-direction:column;gap:10px">
+      ${campSrc.slice(0,6).map((c,i)=>{
+        const pct=Math.round((c.conv||0)/totalCampConv*100);
+        const colors=['#1877f2','#10b981','#7c3aed','#f59e0b','#ec4899','#0891b2'];
+        return `<div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">${c.name}</span>
+            <div style="font-size:12px;display:flex;gap:8px;flex-shrink:0">
+              <span style="color:var(--muted)">${Math.round(c.conv||0)}건</span>
+              <span style="font-weight:700;color:${colors[i%colors.length]}">${pct}%</span>
+            </div>
+          </div>
+          <div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${colors[i%colors.length]};border-radius:4px"></div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : `<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px">캠페인 데이터 없음</div>`}
   </div>
+
+  <!-- 지면별 지출 기여 -->
   <div class="card">
-    <div class="card-hd"><span class="card-title">라스트 클릭 vs 데이터 기반</span></div>
-    <div style="display:flex;flex-direction:column;gap:12px;margin-top:4px">
-      ${channels.map(ch=>`
+    <div class="card-hd"><span class="card-title">지면별 지출 기여</span>${platSrc?`<span style="font-size:10px;background:#ecfdf5;color:#16a34a;padding:2px 7px;border-radius:20px;font-weight:600">실시간</span>`:''}</div>
+    ${platSrc ? `<div style="display:flex;flex-direction:column;gap:10px">
+      ${platSrc.map((p,i)=>{
+        const pct=Math.round(p.spend/totalPlatSpend*100);
+        const colors=['#1877f2','#ec4899','#10b981','#f59e0b'];
+        return `<div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+            <span style="font-size:12.5px;font-weight:600">${platLabel[p.platform]||p.platform}</span>
+            <div style="font-size:12px;display:flex;gap:8px">
+              <span style="color:var(--muted)">${fmtW(p.spend)}</span>
+              <span style="font-weight:700;color:${colors[i%colors.length]}">${pct}%</span>
+            </div>
+          </div>
+          <div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden">
+            <div style="width:${pct}%;height:100%;background:${colors[i%colors.length]};border-radius:4px"></div>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">ROAS ${p.roas}x · CTR ${p.ctr.toFixed(2)}%</div>
+        </div>`;
+      }).join('')}
+    </div>` : `<div style="display:flex;flex-direction:column;gap:10px">
+      ${[['리타겟팅',42,'#1877f2'],['소셜 광고',28,'#10b981'],['디스플레이',18,'#f59e0b'],['검색 광고',12,'#6366f1']].map(([n,p,c])=>`
       <div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:5px">
-          <span style="font-size:13px;font-weight:600">${ch.name}</span>
-          <span style="font-size:12px;color:var(--muted)">라스트 ${ch.last}% → 데이터 ${ch.data}%
-            <span style="font-weight:700;color:${ch.data>ch.last?'#10b981':'#ef4444'};margin-left:3px">${ch.data>ch.last?'▲':'▼'}${Math.abs(ch.data-ch.last)}%p</span>
-          </span>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:12.5px;font-weight:600">${n}</span><span style="font-size:12px;font-weight:700;color:${c}">${p}%</span>
         </div>
-        <div style="display:flex;gap:4px;height:10px">
-          <div style="width:${ch.last}%;background:${ch.color};border-radius:99px;opacity:.5;transition:width .5s"></div>
-          <div style="font-size:10px;color:var(--muted);line-height:10px">vs</div>
-          <div style="width:${ch.data}%;background:${ch.color};border-radius:99px;transition:width .5s"></div>
+        <div style="height:7px;background:var(--border);border-radius:4px;overflow:hidden">
+          <div style="width:${p}%;height:100%;background:${c};border-radius:4px"></div>
         </div>
       </div>`).join('')}
-      <div style="padding:10px;background:var(--input-bg);border-radius:10px;font-size:12.5px;color:var(--muted);line-height:1.6;margin-top:4px">
-        ${ic('info',12,'#1877f2')} 데이터 기반 모델은 소셜 광고와 디스플레이의 기여도를 더 높게 평가합니다. 라스트 클릭 모델 대비 상위 퍼널 예산 배분을 권장합니다.
-      </div>
-    </div>
+    </div>`}
   </div>
 </div>
 
-<div class="card" style="margin-bottom:14px">
-  <div class="card-hd"><span class="card-title">기여 모델 비교</span>
-    <span style="font-size:12px;color:var(--muted)">채널별 기여율(%)</span>
-  </div>
-  <div class="table-wrap"><table class="data-table">
-    <thead><tr><th>모델</th><th>설명</th><th style="text-align:center">리타겟팅</th><th style="text-align:center">검색 광고</th><th style="text-align:center">소셜 광고</th><th style="text-align:center">디스플레이</th></tr></thead>
-    <tbody>
-      ${models.map((m,i)=>`<tr style="${i===5?'background:var(--input-bg);font-weight:600':''}">
-        <td style="font-weight:600">${m.name}${i===5?` <span style="font-size:10px;background:#eff6ff;color:#1877f2;padding:1px 6px;border-radius:20px">추천</span>`:''}</td>
-        <td style="color:var(--muted);font-size:12.5px">${m.desc}</td>
-        ${m.vals.map(v=>`<td style="text-align:center;font-weight:${v>=30?'700':'400'};color:${v>=30?'#1877f2':'var(--text)'}">${v}%</td>`).join('')}
-      </tr>`).join('')}
-    </tbody>
-  </table></div>
-</div>
-
+<!-- 캠페인 상세 테이블 -->
 <div class="card">
-  <div class="card-hd"><span class="card-title">전환 여정 경로 분석</span>
-    <span style="font-size:12px;color:var(--muted)">상위 전환 경로</span>
-  </div>
-  <div style="display:flex;flex-direction:column;gap:8px">
-    ${journeys.map((j,idx)=>`
-    <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--input-bg);border-radius:10px">
-      <span style="font-size:13px;font-weight:700;color:var(--muted);min-width:20px">${idx+1}</span>
-      <div style="display:flex;align-items:center;gap:6px;flex:1;flex-wrap:wrap">
-        ${j.path.map((step,si)=>`
-          <span style="font-size:12.5px;font-weight:600;background:var(--card);border:1px solid var(--border);padding:4px 10px;border-radius:8px">${step}</span>
-          ${si<j.path.length-1?`<span style="color:var(--faint)">${ic('arrow-right',12,'var(--faint)')}</span>`:''}
-        `).join('')}
-        <span style="margin-left:4px;font-size:11px;background:#ecfdf5;color:#10b981;padding:3px 8px;border-radius:20px;font-weight:600">전환</span>
-      </div>
-      <div style="text-align:right;min-width:120px">
-        <div style="font-size:13px;font-weight:700">${j.conv}건</div>
-        <div style="font-size:12px;color:var(--muted)">₩${(j.rev/1000000).toFixed(1)}M</div>
-      </div>
-      <div style="min-width:80px">
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="flex:1;height:7px;background:var(--border);border-radius:99px;overflow:hidden">
-            <div style="width:${j.pct}%;height:100%;background:#1877f2;border-radius:99px"></div>
-          </div>
-          <span style="font-size:12px;color:var(--muted);min-width:28px">${j.pct}%</span>
-        </div>
-      </div>
-    </div>`).join('')}
-  </div>
+  <div class="card-hd"><span class="card-title">캠페인별 기여 상세</span>${isReal?`<span style="font-size:10px;background:#ecfdf5;color:#16a34a;padding:2px 7px;border-radius:20px;font-weight:600">실시간</span>`:''}</div>
+  <table class="data-table">
+    <thead><tr><th>캠페인</th><th>상태</th><th>지출</th><th>전환</th><th>전환가치</th><th>ROAS</th><th>CPA</th><th>기여비중</th></tr></thead>
+    <tbody>
+      ${(isReal?campSrc:campaigns).map(c=>{
+        const pct=Math.round((c.conv||0)/totalCampConv*100);
+        return `<tr>
+          <td style="font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</td>
+          <td><span class="pill ${statusMap[c.status]?.cls||'pill-end'}"><span class="pill-dot"></span>${statusMap[c.status]?.label||'—'}</span></td>
+          <td>${fmtW(c.spend)}</td>
+          <td style="font-weight:600">${Math.round(c.conv||0)}건</td>
+          <td style="color:#10b981;font-weight:600">${c.roas&&c.spend?(fmtW(c.roas*c.spend)):'—'}</td>
+          <td><span style="font-weight:700;color:${c.roas>=4?'#10b981':c.roas>=2?'#1877f2':'#f59e0b'}">${(+c.roas||0).toFixed(2)}x</span></td>
+          <td>${c.conv>0?fmtW(c.spend/c.conv):'—'}</td>
+          <td>
+            <div style="display:flex;align-items:center;gap:6px">
+              <div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;min-width:50px">
+                <div style="width:${pct}%;height:100%;background:#1877f2;border-radius:3px"></div>
+              </div>
+              <span style="font-size:12px;color:var(--muted)">${pct}%</span>
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}
+    </tbody>
+  </table>
 </div>`;
 }
 
