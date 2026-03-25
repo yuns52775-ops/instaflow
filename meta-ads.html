@@ -1662,113 +1662,92 @@ function pgAdvertise(){
   const accountId = getMetaAccountId().replace('act_','');
   const accountName = localStorage.getItem('meta_ads_account_name')||'';
   const hasAccount = !!accountId;
-  const amsBase = hasAccount ? `https://www.facebook.com/adsmanager` : 'https://www.facebook.com/adsmanager';
-  const actParam = hasAccount ? `?act=${accountId}` : '';
+  const ams = 'https://www.facebook.com/adsmanager';
+  const q = hasAccount ? '?act='+accountId : '';
+  const createUrl = ams+'/creation'+q;
+  const campUrl   = ams+'/manage/campaigns'+q;
+  const adsetUrl  = ams+'/manage/adsets'+q;
+  const adsUrl    = ams+'/manage/ads'+q;
+  const reportUrl = ams+'/reporting'+q;
+  const billingUrl= 'https://www.facebook.com/billing/payment_methods/';
 
-  const quickActions = [
-    { icon:'plus-circle', color:'#1877f2', bg:'#e7f0fe', label:'새 캠페인 만들기', desc:'목표 선택부터 광고 게시까지', url: hasAccount ? `https://www.facebook.com/adsmanager/creation${actParam}` : null, cta:'캠페인 만들기' },
-    { icon:'megaphone',   color:'#7c3aed', bg:'#ede9fe', label:'캠페인 관리',       desc:'진행 중인 캠페인 수정 및 예산 조정', url:`${amsBase}/manage/campaigns${actParam}`, cta:'캠페인 목록' },
-    { icon:'layers',      color:'#0891b2', bg:'#e0f2fe', label:'광고 세트 관리',    desc:'타겟 오디언스·일정·예산 설정', url:`${amsBase}/manage/adsets${actParam}`, cta:'광고 세트 목록' },
-    { icon:'image',       color:'#ec4899', bg:'#fce7f3', label:'광고 소재 관리',    desc:'광고 이미지·동영상·문구 수정', url:`${amsBase}/manage/ads${actParam}`, cta:'광고 목록' },
-    { icon:'bar-chart-2', color:'#10b981', bg:'#dcfce7', label:'광고 성과 보고서', desc:'클릭·전환·ROAS 상세 보고서', url:`${amsBase}/reporting${actParam}`, cta:'보고서 열기' },
-    { icon:'credit-card', color:'#f59e0b', bg:'#fef9c3', label:'결제 & 청구서',    desc:'광고비 충전·결제 수단·청구서', url:`https://www.facebook.com/billing/payment_methods/`, cta:'결제 설정' },
+  const quickCards = [
+    {icon:'plus-circle',color:'#1877f2',bg:'#e7f0fe',label:'새 캠페인 만들기',desc:'목표 선택부터 광고 게시까지',url:createUrl,cta:'캠페인 만들기'},
+    {icon:'megaphone',  color:'#7c3aed',bg:'#ede9fe',label:'캠페인 관리',     desc:'진행 중인 캠페인 수정 및 예산 조정',url:campUrl,cta:'캠페인 목록'},
+    {icon:'layers',     color:'#0891b2',bg:'#e0f2fe',label:'광고 세트 관리',  desc:'타겟·일정·예산 설정',url:adsetUrl,cta:'광고 세트 목록'},
+    {icon:'image',      color:'#ec4899',bg:'#fce7f3',label:'광고 소재 관리',  desc:'이미지·동영상·문구 수정',url:adsUrl,cta:'광고 목록'},
+    {icon:'bar-chart-2',color:'#10b981',bg:'#dcfce7',label:'광고 성과 보고서',desc:'클릭·전환·ROAS 상세 보고서',url:reportUrl,cta:'보고서 열기'},
+    {icon:'credit-card',color:'#f59e0b',bg:'#fef9c3',label:'결제 & 청구서',  desc:'광고비 충전·결제 수단·청구서',url:billingUrl,cta:'결제 설정'},
   ];
 
-  return `
-<div class="page-header">
-  <h1>${ic('plus-circle',20,'#10b981')} 광고하기</h1>
-</div>
+  const goalCards = [
+    {goal:'인지도',   icon:'eye',               desc:'브랜드·제품을 더 많은 사람에게 노출', color:'#6366f1', url:ams+'/creation'+q},
+    {goal:'트래픽',   icon:'mouse-pointer-click',desc:'웹사이트·앱으로 방문자 유도',         color:'#0891b2', url:ams+'/creation'+q},
+    {goal:'참여',     icon:'heart',             desc:'좋아요·댓글·공유·팔로워',             color:'#ec4899', url:ams+'/creation'+q},
+    {goal:'리드',     icon:'mail',              desc:'연락처 수집·설문·Instant Form',       color:'#f59e0b', url:ams+'/creation'+q},
+    {goal:'앱 홍보',  icon:'smartphone',        desc:'앱 설치·인앱 구매·이벤트',            color:'#7c3aed', url:ams+'/creation'+q},
+    {goal:'판매',     icon:'shopping-cart',     desc:'전환·카탈로그 판매·ROAS 최적화',      color:'#10b981', url:ams+'/creation'+q},
+  ];
 
-${hasAccount
-  ? `<div class="inline-alert" style="background:#ecfdf5;border-color:#bbf7d0;color:#166534;margin-bottom:20px">
-      ${ic('check-circle',14,'#16a34a')}
-      <span>연결된 계정: <strong>${accountName||'act_'+accountId}</strong> (${accountId}) &nbsp;
-      <button onclick="showMetaConnect()" style="background:none;border:none;color:#16a34a;font-weight:700;cursor:pointer;font-size:12px">계정 전환</button></span>
-    </div>`
-  : `<div class="inline-alert" style="margin-bottom:20px">${ic('alert-circle',14,'#f59e0b')}
-      <span style="color:#92400e">Meta 광고 계정을 먼저 연결해야 광고를 집행할 수 있습니다. &nbsp;
-      <button onclick="showMetaConnect()" style="background:none;border:none;color:#d97706;font-weight:700;cursor:pointer;font-size:12px">연결하기 →</button></span>
-    </div>`
-}
+  function quickCardHtml(a){
+    return '<div onclick="window.open(\''+a.url+'\',\'_blank\')" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;cursor:pointer;transition:box-shadow .2s,transform .2s" onmouseover="this.style.boxShadow=\'0 6px 24px rgba(0,0,0,.1)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.boxShadow=\'\';this.style.transform=\'\'">'
+      +'<div style="width:40px;height:40px;border-radius:10px;background:'+a.bg+';display:flex;align-items:center;justify-content:center;margin-bottom:12px">'+ic(a.icon,20,a.color)+'</div>'
+      +'<div style="font-size:13.5px;font-weight:700;margin-bottom:4px">'+a.label+'</div>'
+      +'<div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">'+a.desc+'</div>'
+      +'<div style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:'+a.color+'">'+a.cta+' '+ic('external-link',11,a.color)+'</div>'
+      +'</div>';
+  }
 
-<!-- 광고 만들기 메인 CTA -->
-<div style="background:linear-gradient(135deg,#1877f2 0%,#0d65d9 100%);border-radius:16px;padding:32px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden;">
-  <div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.07)"></div>
-  <div style="font-size:12px;font-weight:600;opacity:.8;margin-bottom:8px;display:flex;align-items:center;gap:6px">${ic('zap',13)} 빠른 시작</div>
-  <h2 style="font-size:22px;font-weight:800;letter-spacing:-.4px;margin-bottom:6px">지금 바로 광고 만들기</h2>
-  <p style="font-size:13.5px;opacity:.85;line-height:1.6;margin-bottom:20px">Meta 광고 관리자에서 캠페인 목표 설정부터 광고 게시까지<br/>단계별로 안내받으며 광고를 만들 수 있습니다.</p>
-  <button onclick="window.open('${hasAccount ? `https://www.facebook.com/adsmanager/creation${actParam}` : 'https://www.facebook.com/adsmanager/creation'}','_blank')"
-    style="background:#fff;color:#1877f2;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.15)">
-    ${ic('plus-circle',16,'#1877f2')} 새 캠페인 만들기
-  </button>
-  ${hasAccount ? `<span style="font-size:12px;opacity:.7;margin-left:14px">광고 계정 act_${accountId} 사용 중</span>` : ''}
-</div>
+  function goalCardHtml(o){
+    return '<div onclick="window.open(\''+o.url+'\',\'_blank\')" style="border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:border-color .18s,background .18s" onmouseover="this.style.borderColor=\''+o.color+'\';this.style.background=\'var(--input-bg)\'" onmouseout="this.style.borderColor=\'var(--border)\';this.style.background=\'\'">'
+      +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">'
+      +'<div style="width:28px;height:28px;border-radius:7px;background:'+o.color+'22;display:flex;align-items:center;justify-content:center">'+ic(o.icon,14,o.color)+'</div>'
+      +'<span style="font-size:13px;font-weight:700">'+o.goal+'</span></div>'
+      +'<p style="font-size:11.5px;color:var(--muted);line-height:1.5">'+o.desc+'</p>'
+      +'</div>';
+  }
 
-<!-- 바로가기 그리드 -->
-<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px">
-  ${quickActions.map(a=>`
-  <div onclick="window.open('${a.url||'https://www.facebook.com/adsmanager'}','_blank')"
-    style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;cursor:pointer;transition:box-shadow .2s,transform .2s"
-    onmouseover="this.style.boxShadow='0 6px 24px rgba(0,0,0,.1)';this.style.transform='translateY(-2px)'"
-    onmouseout="this.style.boxShadow='';this.style.transform=''">
-    <div style="width:40px;height:40px;border-radius:10px;background:${a.bg};display:flex;align-items:center;justify-content:center;margin-bottom:12px">
-      ${ic(a.icon,20,a.color)}
-    </div>
-    <div style="font-size:13.5px;font-weight:700;margin-bottom:4px">${a.label}</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.5">${a.desc}</div>
-    <div style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:${a.color}">
-      ${a.cta} ${ic('external-link',11,a.color)}
-    </div>
-  </div>`).join('')}
-</div>
+  function campRowHtml(c){
+    var statusCls = c.status==='active'?'pill-active':c.status==='pause'?'pill-pause':'pill-end';
+    var statusTxt = c.status==='active'?'집행중':c.status==='pause'?'일시정지':'종료';
+    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--bg)">'
+      +'<span class="pill '+statusCls+'" style="flex-shrink:0"><span class="pill-dot"></span>'+statusTxt+'</span>'
+      +'<span style="flex:1;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c.name+'</span>'
+      +'<span style="font-size:12.5px;color:var(--muted);flex-shrink:0">₩'+fmt(c.spend)+'</span>'
+      +'<button onclick="window.open(\''+campUrl+'\',\'_blank\')" style="background:var(--brand-light);color:var(--brand);border:none;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:4px">수정 '+ic('external-link',11,'var(--brand)')+'</button>'
+      +'</div>';
+  }
 
-<!-- 목표별 캠페인 타입 -->
-<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px">
-  <div style="font-size:14px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px">${ic('target',16,'var(--brand)')} 목표에 맞는 캠페인 선택</div>
-  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
-    ${[
-      {goal:'인지도',icon:'eye',desc:'브랜드·제품을 더 많은 사람에게 노출',obj:'BRAND_AWARENESS',color:'#6366f1'},
-      {goal:'트래픽',icon:'mouse-pointer-click',desc:'웹사이트·앱으로 방문자 유도',obj:'LINK_CLICKS',color:'#0891b2'},
-      {goal:'참여',icon:'heart',desc:'좋아요·댓글·공유·페이지 팔로워',obj:'POST_ENGAGEMENT',color:'#ec4899'},
-      {goal:'리드',icon:'mail',desc:'연락처 수집·설문·Instant Form',obj:'LEAD_GENERATION',color:'#f59e0b'},
-      {goal:'앱 홍보',icon:'smartphone',desc:'앱 설치·인앱 구매·이벤트',obj:'APP_INSTALLS',color:'#7c3aed'},
-      {goal:'판매',icon:'shopping-cart',desc:'전환·카탈로그 판매·ROAS 최적화',obj:'CONVERSIONS',color:'#10b981'},
-    ].map(o=>`
-    <div onclick="window.open('${hasAccount ? `https://www.facebook.com/adsmanager/creation?act=${accountId}&objective=${o.obj}` : 'https://www.facebook.com/adsmanager/creation'}','_blank')"
-      style="border:1px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:border-color .18s,background .18s"
-      onmouseover="this.style.borderColor='${o.color}';this.style.background='var(--input-bg)'"
-      onmouseout="this.style.borderColor='var(--border)';this.style.background=''">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-        <div style="width:28px;height:28px;border-radius:7px;background:${o.color}20;display:flex;align-items:center;justify-content:center">${ic(o.icon,14,o.color)}</div>
-        <span style="font-size:13px;font-weight:700">${o.goal}</span>
-      </div>
-      <p style="font-size:11.5px;color:var(--muted);line-height:1.5">${o.desc}</p>
-    </div>`).join('')}
-  </div>
-</div>
+  var alertHtml = hasAccount
+    ? '<div class="inline-alert" style="background:#ecfdf5;border-color:#bbf7d0;color:#166534;margin-bottom:20px">'+ic('check-circle',14,'#16a34a')+'<span>연결된 계정: <strong>'+(accountName||'act_'+accountId)+'</strong> ('+accountId+') &nbsp;<button onclick="showMetaConnect()" style="background:none;border:none;color:#16a34a;font-weight:700;cursor:pointer;font-size:12px">계정 전환</button></span></div>'
+    : '<div class="inline-alert" style="margin-bottom:20px">'+ic('alert-circle',14,'#f59e0b')+'<span style="color:#92400e">Meta 광고 계정을 먼저 연결해야 합니다. &nbsp;<button onclick="showMetaConnect()" style="background:none;border:none;color:#d97706;font-weight:700;cursor:pointer;font-size:12px">연결하기 →</button></span></div>';
 
-<!-- 최근 캠페인 연결 -->
-<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px">
-  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-    <div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px">${ic('history',16,'var(--brand)')} 최근 캠페인 바로가기</div>
-    <button onclick="window.open('${amsBase}/manage/campaigns${actParam}','_blank')" class="btn-ghost" style="font-size:12px;padding:5px 12px">
-      전체 보기 ${ic('external-link',12)}
-    </button>
-  </div>
-  ${campaigns.slice(0,5).map(c=>`
-  <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--bg)">
-    <span class="pill ${c.status==='active'?'pill-active':c.status==='pause'?'pill-pause':'pill-end'}" style="flex-shrink:0">
-      <span class="pill-dot"></span>${c.status==='active'?'집행중':c.status==='pause'?'일시정지':'종료'}
-    </span>
-    <span style="flex:1;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.name}</span>
-    <span style="font-size:12.5px;color:var(--muted);flex-shrink:0">₩${fmt(c.spend)}</span>
-    <button onclick="window.open('${amsBase}/manage/campaigns${actParam}','_blank')"
-      style="background:var(--brand-light);color:var(--brand);border:none;border-radius:7px;padding:5px 10px;font-size:11.5px;font-weight:600;cursor:pointer;flex-shrink:0;display:flex;align-items:center;gap:4px">
-      수정 ${ic('external-link',11,'var(--brand)')}
-    </button>
-  </div>`).join('')}
-  ${!campaigns.length ? `<div style="text-align:center;padding:24px;color:var(--faint);font-size:13px">집행 이력이 없습니다</div>` : ''}
-</div>`;
+  var campListHtml = campaigns.length
+    ? campaigns.slice(0,5).map(campRowHtml).join('')
+    : '<div style="text-align:center;padding:24px;color:var(--faint);font-size:13px">집행 이력이 없습니다</div>';
+
+  return '<div class="page-header"><h1>'+ic('plus-circle',20,'#10b981')+' 광고하기</h1></div>'
+    + alertHtml
+    + '<div style="background:linear-gradient(135deg,#1877f2 0%,#0d65d9 100%);border-radius:16px;padding:32px;color:#fff;margin-bottom:24px;position:relative;overflow:hidden;">'
+    +   '<div style="position:absolute;top:-40px;right:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.07)"></div>'
+    +   '<div style="font-size:12px;font-weight:600;opacity:.8;margin-bottom:8px;display:flex;align-items:center;gap:6px">'+ic('zap',13)+' 빠른 시작</div>'
+    +   '<h2 style="font-size:22px;font-weight:800;letter-spacing:-.4px;margin-bottom:6px">지금 바로 광고 만들기</h2>'
+    +   '<p style="font-size:13.5px;opacity:.85;line-height:1.6;margin-bottom:20px">Meta 광고 관리자에서 캠페인 목표 설정부터 광고 게시까지 단계별로 진행할 수 있습니다.</p>'
+    +   '<button onclick="window.open(\''+createUrl+'\',\'_blank\')" style="background:#fff;color:#1877f2;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(0,0,0,.15)">'+ic('plus-circle',16,'#1877f2')+' 새 캠페인 만들기</button>'
+    +   (hasAccount ? '<span style="font-size:12px;opacity:.7;margin-left:14px">광고 계정 act_'+accountId+' 사용 중</span>' : '')
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px">'+quickCards.map(quickCardHtml).join('')+'</div>'
+    + '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;margin-bottom:20px">'
+    +   '<div style="font-size:14px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px">'+ic('target',16,'var(--brand)')+' 목표에 맞는 캠페인 선택</div>'
+    +   '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">'+goalCards.map(goalCardHtml).join('')+'</div>'
+    + '</div>'
+    + '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px">'
+    +   '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'
+    +     '<div style="font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px">'+ic('history',16,'var(--brand)')+' 최근 캠페인 바로가기</div>'
+    +     '<button onclick="window.open(\''+campUrl+'\',\'_blank\')" class="btn-ghost" style="font-size:12px;padding:5px 12px">전체 보기 '+ic('external-link',12)+'</button>'
+    +   '</div>'
+    +   campListHtml
+    + '</div>';
 }
 
 // ── Ad Library (Competitor Analysis) ─────────────────────────────────────────
