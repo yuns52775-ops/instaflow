@@ -442,6 +442,41 @@ async function metaFetch(path, token){
   return res.json();
 }
 
+let realAdsets = null;
+
+function metaProcessAdsets(data){
+  if(!data||!data.data) return [];
+  const sm = {ACTIVE:'active',PAUSED:'pause',ARCHIVED:'end',DELETED:'end',CAMPAIGN_PAUSED:'pause'};
+  return data.data.map(a=>{
+    const ins = a.insights?.data?.[0];
+    const spend = parseFloat(ins?.spend)||0;
+    const conv = ins ? (metaGetAction(ins.actions,'purchase')||metaGetAction(ins.actions,'complete_registration')||0) : 0;
+    const convVal = ins ? (metaGetAction(ins.action_values,'purchase')||0) : 0;
+    // targeting summary
+    let targetDesc = '—';
+    if(a.targeting){
+      const t = a.targeting;
+      const parts = [];
+      if(t.age_min||t.age_max) parts.push(`${t.age_min||''}~${t.age_max||''}세`);
+      if(t.genders) parts.push(t.genders.includes(1)&&t.genders.includes(2)?'전체':t.genders.includes(1)?'남성':'여성');
+      if(t.geo_locations?.countries?.length) parts.push(t.geo_locations.countries.join(','));
+      if(t.interests?.length) parts.push(t.interests[0].name);
+      targetDesc = parts.join(' · ')||'광범위';
+    }
+    return {
+      id:a.id, name:a.name,
+      camp:a.campaign_id||'—',
+      target:targetDesc,
+      status:sm[a.status]||'end',
+      budget:parseInt(a.daily_budget||a.lifetime_budget||0)/100,
+      spend, reach:parseInt(ins?.reach)||0,
+      ctr:parseFloat(ins?.ctr)||0,
+      roas:spend>0?convVal/spend:0,
+      conv, cpc:parseFloat(ins?.cpc)||0,
+    };
+  });
+}
+
 async function loadRealAdsData(){
   const token = getMetaToken();
   const accountId = getMetaAccountId();
@@ -449,11 +484,12 @@ async function loadRealAdsData(){
   try {
     toast('Meta Ads 실시간 데이터 로딩 중...','info');
     const insFields = 'spend,impressions,reach,clicks,ctr,cpc,cpm,actions,action_values';
-    const campInsFields = `spend,impressions,reach,clicks,ctr,cpc,cpm,actions,action_values`;
-    const campFields = `id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time,insights.date_preset(last_30d){${campInsFields}}`;
-    const [insData, campData] = await Promise.all([
+    const campFields = `id,name,status,objective,daily_budget,lifetime_budget,start_time,stop_time,insights.date_preset(last_30d){${insFields}}`;
+    const adsetFields = `id,name,campaign_id,status,targeting,daily_budget,lifetime_budget,insights.date_preset(last_30d){spend,reach,clicks,ctr,cpc,actions,action_values}`;
+    const [insData, campData, adsetData] = await Promise.all([
       metaFetch(`/${accountId}/insights?fields=${insFields}&date_preset=last_30d`, token),
       metaFetch(`/${accountId}/campaigns?fields=${encodeURIComponent(campFields)}&limit=50`, token),
+      metaFetch(`/${accountId}/adsets?fields=${encodeURIComponent(adsetFields)}&limit=100`, token),
     ]);
     if(insData.error){
       const code = insData.error.code;
@@ -468,12 +504,20 @@ async function loadRealAdsData(){
     realKpis = metaProcessInsights(insData);
     const realCamps = metaProcessCampaigns(campData);
     if(realCamps.length>0){ campaigns.length=0; campaigns.push(...realCamps); }
+    const realAdsetsArr = metaProcessAdsets(adsetData);
+    if(realAdsetsArr.length>0){
+      realAdsets = realAdsetsArr;
+      // campaign_id → name 매핑
+      const campMap = {};
+      campaigns.forEach(c=>{ campMap[c.id]=c.name; });
+      realAdsets.forEach(a=>{ if(campMap[a.camp]) a.camp=campMap[a.camp]; });
+    }
     const accName = localStorage.getItem('meta_ads_account_name')||accountId;
     document.querySelector('.acc-name').textContent = accName;
     document.querySelector('.acc-id').textContent = '광고 계정 ' + accountId.replace('act_','#');
     const connectBtn = document.getElementById('metaConnectBtn');
     if(connectBtn) connectBtn.textContent = '재연결';
-    toast(`실시간 데이터 로드 완료 · 캠페인 ${realCamps.length}개`,'success');
+    toast(`실시간 데이터 로드 완료 · 캠페인 ${realCamps.length}개 · 광고세트 ${realAdsetsArr.length}개`,'success');
     return true;
   } catch(e){
     toast('데이터 로드 실패: '+e.message,'warn');
@@ -766,36 +810,51 @@ function renderCampRows(list){
 }
 
 function pgAdsets(){
+  const src = realAdsets || adsets;
+  const isReal = !!realAdsets;
+  const fmtSpend = v => v>=1000000?'₩'+(v/1000000).toFixed(1)+'M':v>=10000?'₩'+(v/10000).toFixed(0)+'만':'₩'+Math.round(v).toLocaleString();
+  const alertHtml = isReal
+    ? `<div class="inline-alert" style="background:#ecfdf5;border-color:#bbf7d0;color:#166534;margin-bottom:14px">${ic('check-circle',14,'#16a34a')} <span>실시간 Meta Ads 데이터 · 광고세트 ${src.length}개</span></div>`
+    : `<div class="inline-alert" style="margin-bottom:14px">${ic('info',14,'#1877f2')} <span>샘플 데이터입니다. &nbsp;<button onclick="showMetaConnect()" style="background:none;border:none;color:var(--brand);font-weight:700;cursor:pointer;font-size:12px">Meta Ads 연결 →</button></span></div>`;
   return `
 <div class="page-header">
   <h1>${ic('layers',18,'var(--brand)')} 광고 세트 관리</h1>
   <div class="page-header-right">
-    <button class="btn-ghost">${ic('sliders',13)} 필터</button>
-    <button class="btn-ghost" onclick="toast('CSV 내보내기 완료','success')">${ic('download',13)} 내보내기</button>
-    <button class="btn-primary" onclick="toast('광고 세트 만들기는 캠페인 선택 후 가능합니다','info')">${ic('plus',13)} 광고 세트 만들기</button>
+    <button class="btn-ghost" onclick="loadRealAdsData().then(ok=>{if(ok)navigate('adsets')})">${ic('refresh-cw',13)} 새로고침</button>
+    <button class="btn-ghost" onclick="exportAdsetCSV()">${ic('download',13)} 내보내기</button>
   </div>
 </div>
+${alertHtml}
 <div class="card">
-  <div class="card-hd"><span class="card-title">전체 광고 세트 (${adsets.length})</span></div>
+  <div class="card-hd"><span class="card-title">전체 광고 세트 (${src.length})</span></div>
   <table class="data-table">
-    <thead><tr><th>광고 세트명</th><th>캠페인</th><th>타겟</th><th>상태</th><th>일예산</th><th>지출</th><th>도달</th><th>CTR</th><th>ROAS</th><th>전환</th></tr></thead>
+    <thead><tr><th>광고 세트명</th><th>캠페인</th><th>타겟</th><th>상태</th><th>${isReal?'일예산':'일예산'}</th><th>지출</th><th>도달</th><th>CTR</th><th>ROAS</th><th>전환</th></tr></thead>
     <tbody>
-      ${adsets.map((a,i)=>`
-      <tr onclick="showAdsetDetail(${i})">
+      ${src.map((a,i)=>`
+      <tr>
         <td style="font-weight:600">${a.name}</td>
-        <td style="color:var(--muted);font-size:12px;white-space:nowrap">${a.camp}</td>
+        <td style="color:var(--muted);font-size:12px;white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis">${a.camp}</td>
         <td style="color:var(--muted);font-size:12px;max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${a.target}</td>
-        <td><span class="pill ${statusMap[a.status].cls}"><span class="pill-dot"></span>${statusMap[a.status].label}</span></td>
-        <td>₩${a.budget.toLocaleString()}</td>
-        <td style="font-weight:600">₩${a.spend.toLocaleString()}</td>
-        <td>${a.reach.toLocaleString()}</td>
-        <td>${a.ctr}%</td>
-        <td><span style="font-weight:700;color:${a.roas>=5?'#10b981':a.roas>=3?'#1877f2':'#f59e0b'}">${a.roas}x</span></td>
-        <td style="font-weight:600;color:${a.conv>=150?'#10b981':'var(--text)'}">${a.conv}</td>
+        <td><span class="pill ${statusMap[a.status]?.cls||'pill-end'}"><span class="pill-dot"></span>${statusMap[a.status]?.label||'—'}</span></td>
+        <td>${a.budget?fmtSpend(a.budget):'—'}</td>
+        <td style="font-weight:600">${fmtSpend(a.spend)}</td>
+        <td>${(a.reach||0).toLocaleString()}</td>
+        <td>${(+a.ctr||0).toFixed(2)}%</td>
+        <td><span style="font-weight:700;color:${a.roas>=5?'#10b981':a.roas>=3?'#1877f2':'#f59e0b'}">${(+a.roas||0).toFixed(2)}x</span></td>
+        <td style="font-weight:600;color:${a.conv>=150?'#10b981':'var(--text)'}">${Math.round(a.conv||0)}</td>
       </tr>`).join('')}
     </tbody>
   </table>
 </div>`;
+}
+
+function exportAdsetCSV(){
+  const src = realAdsets||adsets;
+  const rows=[['광고세트명','캠페인','타겟','상태','지출','도달','CTR','ROAS','전환'],...src.map(a=>[a.name,a.camp,a.target,a.status,a.spend,a.reach,a.ctr,a.roas,a.conv])];
+  const csv=rows.map(r=>r.join(',')).join('\n');
+  const el=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv'})),download:'adsets.csv'});
+  el.click();URL.revokeObjectURL(el.href);
+  toast('광고세트 CSV 다운로드 완료','success');
 }
 
 function pgCreatives(){
